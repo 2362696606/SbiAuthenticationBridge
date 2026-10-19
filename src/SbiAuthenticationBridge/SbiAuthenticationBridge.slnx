@@ -1,0 +1,11 @@
+﻿<Solution>
+  <Project Path="SbiAuthenticationBridge.Android/SbiAuthenticationBridge.Android.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="SbiAuthenticationBridge.Browser/SbiAuthenticationBridge.Browser.csproj" />
+  <Project Path="SbiAuthenticationBridge.Desktop/SbiAuthenticationBridge.Desktop.csproj" />
+  <Project Path="SbiAuthenticationBridge.iOS/SbiAuthenticationBridge.iOS.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="SbiAuthenticationBridge/SbiAuthenticationBridge.csproj" />
+</Solution>
