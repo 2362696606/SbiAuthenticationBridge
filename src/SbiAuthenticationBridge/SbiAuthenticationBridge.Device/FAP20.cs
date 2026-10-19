@@ -45,7 +45,7 @@ public class FAP20 : IDevice
     /// <summary>
     /// 原生接口返回的设备忙/需复位状态码
     /// </summary>
-    private const int DeviceBusyResultCode = 0x75;
+    internal const int DeviceBusyResultCode = 0x75;
 
     /// <summary>
     /// 收到 0x75 后自动软复位的超时
@@ -604,7 +604,7 @@ public class FAP20 : IDevice
                 var result = FtmNativeMethods.DeviceReset(_deviceHandle, timeoutMs);
                 if (result != 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new FtmCommandException("ftm_device_reset", result,
                         $"ftm_device_reset 失败，返回错误码 0x{result:X}（{result}）。");
                 }
             }
@@ -723,7 +723,7 @@ public class FAP20 : IDevice
         var resetAttempted = result == DeviceBusyResultCode && ResetAfterDeviceBusy(operation);
         var resetMessage = resetAttempted ? "已尝试软复位，可重试。" : string.Empty;
 
-        throw new InvalidOperationException(
+        throw new FtmCommandException(operation, result,
             $"{operation} 失败，返回错误码 0x{result:X}（{result}）。{resetMessage}");
     }
 
