@@ -10,6 +10,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.iOS
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Browser", "SbiAuthenticationBridge.Browser\SbiAuthenticationBridge.Browser.csproj", "{09A1775C-B137-4FE9-BE9F-09E177D17748}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Core", "SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj", "{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Host", "SbiAuthenticationBridge.Host\SbiAuthenticationBridge.Host.csproj", "{F742F380-E453-4F25-8B02-030F8E538DB2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Host.Http", "SbiAuthenticationBridge.Host.Http\SbiAuthenticationBridge.Host.Http.csproj", "{1B497B7F-9CD6-4264-8688-F27356C354E0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Device", "SbiAuthenticationBridge.Device\SbiAuthenticationBridge.Device.csproj", "{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -40,5 +48,21 @@ Global
 		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F742F380-E453-4F25-8B02-030F8E538DB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F742F380-E453-4F25-8B02-030F8E538DB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F742F380-E453-4F25-8B02-030F8E538DB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F742F380-E453-4F25-8B02-030F8E538DB2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1B497B7F-9CD6-4264-8688-F27356C354E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B497B7F-9CD6-4264-8688-F27356C354E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B497B7F-9CD6-4264-8688-F27356C354E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B497B7F-9CD6-4264-8688-F27356C354E0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
