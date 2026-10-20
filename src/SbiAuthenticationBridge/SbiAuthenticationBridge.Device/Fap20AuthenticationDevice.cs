@@ -1,21 +1,23 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Common;
 using SbiAuthenticationBridge.Core.Dto;
 using SbiAuthenticationBridge.Device.Protocol;
+using Serilog;
 
 namespace SbiAuthenticationBridge.Device;
 
 /// <summary>
 /// FAP20 的 SBI 认证设备句柄：设备发现、设备信息与认证指纹采集
 /// </summary>
-public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAuthenticationDeviceHandle
+public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationDevice
 {
     private const string SuccessErrorCode = "0";
 
     private const string DefaultSpecVersion = "0.9.5";
+
+    private static readonly ILogger Logger = Log.ForContext("SourceContext", "FAP20");
 
     private static readonly Dictionary<string, FtmFingerPosition> FingerPositions =
         new(StringComparer.OrdinalIgnoreCase)
@@ -39,7 +41,7 @@ public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAut
     /// <param name="callbackId">
     /// SBI 设备服务回调地址，须为 1..192 字节可打印 ASCII
     /// </param>
-    public Fap20AuthenticationDeviceHandle(FAP20 device, string callbackId)
+    public Fap20AuthenticationDevice(FAP20 device, string callbackId)
         : base(device, callbackId)
     {
     }
@@ -58,6 +60,8 @@ public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAut
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+
+        Logger.Information("开始认证采集，事务 {TransactionId:l}", request.TransactionId);
 
         var bios = request.Bio;
         if (bios is null || bios.Count == 0)
@@ -93,6 +97,7 @@ public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAut
             biometrics.Add(biometric);
         }
 
+        Logger.Information("认证采集完成，返回 {Count} 条结果", biometrics.Count);
         return new CaptureResponse { Biometrics = biometrics };
     }
 
@@ -140,12 +145,12 @@ public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAut
         }
         catch (FtmCommandException exception) when (exception.ResultCode == FAP20.DeviceBusyResultCode)
         {
-            Debug.WriteLine($"[FAP20] 认证采集设备忙：{exception}");
+            Logger.Warning(exception, "认证采集设备忙");
             return new BiometricInfo { Error = SbiErrorHelper.DeviceBusy };
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] 认证采集失败：{exception}");
+            Logger.Error(exception, "认证采集失败");
             return new BiometricInfo
             {
                 Error = Device.IsConnected
@@ -306,7 +311,7 @@ public sealed class Fap20AuthenticationDeviceHandle : Fap20SbiDeviceHandle, IAut
         }
         catch (JsonException exception)
         {
-            Debug.WriteLine($"[FAP20] 认证采集响应不是合法 JSON：{exception}");
+            Logger.Error(exception, "认证采集响应不是合法 JSON");
             return CreateBiometricError(SbiErrorHelper.TechnicalErrorDuringExtraction);
         }
 

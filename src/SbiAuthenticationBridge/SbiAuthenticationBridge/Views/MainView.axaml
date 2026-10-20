@@ -1,18 +1,31 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:SbiAuthenticationBridge.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="SbiAuthenticationBridge.Views.MainView"
-             x:DataType="vm:MainViewModel">
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainViewModel />
-    </Design.DataContext>
+<UserControl
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d"
+    x:Class="SbiAuthenticationBridge.Views.MainView"
+    x:DataType="vm:MainViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:SbiAuthenticationBridge.Views"
+    xmlns:vm="using:SbiAuthenticationBridge.ViewModels"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <TextBox Text="{Binding Greeting}"
-             HorizontalAlignment="Center"
-             VerticalAlignment="Center" />
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel
+            Margin="12"
+            Spacing="12">
+            <views:DevicesView
+                Height="280"
+                DataContext="{Binding Devices}" />
+
+            <views:DeviceView DataContext="{Binding Device}" />
+
+            <views:SbiServiceView DataContext="{Binding SbiService}" />
+
+            <views:LogView
+                Height="420"
+                DataContext="{Binding Log}" />
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

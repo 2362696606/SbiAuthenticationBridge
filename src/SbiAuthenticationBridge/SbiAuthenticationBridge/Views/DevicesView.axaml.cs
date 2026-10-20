@@ -4,9 +4,9 @@ using Avalonia.Markup.Xaml;
 
 namespace SbiAuthenticationBridge.Views;
 
-public partial class DeviceListView : UserControl
+public partial class DevicesView : UserControl
 {
-    public DeviceListView()
+    public DevicesView()
     {
         InitializeComponent();
     }

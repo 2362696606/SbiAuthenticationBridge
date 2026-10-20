@@ -1,0 +1,64 @@
+<UserControl
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d"
+    x:Class="SbiAuthenticationBridge.Views.DevicesView"
+    x:DataType="viewModels:DevicesViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:SbiAuthenticationBridge.ViewModels"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Margin="8" RowDefinitions="Auto,*,Auto">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock FontSize="18" FontWeight="Bold" Text="设备列表" />
+                <TextBlock
+                    Margin="0,4,0,0"
+                    Foreground="Gray"
+                    Text="选择一个设备作为当前操作设备。" />
+            </StackPanel>
+
+            <Button
+                Grid.Column="1"
+                Command="{Binding RefreshDevicesCommand}"
+                Content="刷新"
+                VerticalAlignment="Center" />
+        </Grid>
+
+        <ListBox
+            Grid.Row="1"
+            Margin="0,12,0,0"
+            ItemsSource="{Binding Devices}"
+            SelectedItem="{Binding SelectedDevice}">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="viewModels:DeviceItemViewModel">
+                    <Grid ColumnDefinitions="*,Auto" Margin="4">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                            <TextBlock
+                                Foreground="Gray"
+                                FontSize="12"
+                                Text="{Binding RoleText}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="12,0"
+                            Foreground="Gray"
+                            Text="{Binding ConnectionText}"
+                            VerticalAlignment="Center" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock
+            Grid.Row="2"
+            Margin="0,8,0,0"
+            Foreground="Red"
+            Text="{Binding ErrorMessage}"
+            TextWrapping="Wrap" />
+    </Grid>
+</UserControl>

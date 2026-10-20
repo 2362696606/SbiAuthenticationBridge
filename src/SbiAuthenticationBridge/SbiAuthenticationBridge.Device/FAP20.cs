@@ -1,9 +1,10 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Dto;
+using SbiAuthenticationBridge.Core.Dto.Enum;
 using SbiAuthenticationBridge.Device.Protocol;
 using SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
+using Serilog;
 
 namespace SbiAuthenticationBridge.Device;
 
@@ -11,6 +12,8 @@ namespace SbiAuthenticationBridge.Device;
 public class FAP20 : IDevice
 {
     #region Consts
+
+    private static readonly ILogger Logger = Log.ForContext("SourceContext", "FAP20");
 
     /// <summary>
     /// 证书 DER 的最大长度，对应 LOAD_CERTIFICATE(0x11) 协议限制
@@ -31,6 +34,16 @@ public class FAP20 : IDevice
     /// 证书下发的默认超时：证书走慢速控制传输，默认 5 秒
     /// </summary>
     public const uint DefaultCertificateTimeoutMs = 5_000;
+
+    /// <summary>
+    /// 默认 USB 厂商 ID，与 <c>Lib/ICT/FAP20/FingerPrintDebug.INI</c> 中的首个型号一致
+    /// </summary>
+    public const ushort DefaultVendorId = 0x0483;
+
+    /// <summary>
+    /// 默认 USB 产品 ID，与 <c>Lib/ICT/FAP20/FingerPrintDebug.INI</c> 中的首个型号一致
+    /// </summary>
+    public const ushort DefaultProductId = 0x5725;
 
     /// <summary>
     /// 通用命令的默认超时
@@ -97,6 +110,14 @@ public class FAP20 : IDevice
     private volatile bool _disposed;
 
     #endregion
+
+    /// <summary>
+    /// 使用 <c>FingerPrintDebug.INI</c> 中的默认 VID/PID 创建 FAP20 设备实例
+    /// </summary>
+    public FAP20()
+        : this(DefaultVendorId, DefaultProductId)
+    {
+    }
 
     /// <summary>
     /// 创建 FAP20 设备实例
@@ -201,6 +222,7 @@ public class FAP20 : IDevice
                 }
 
                 _isConnected = true;
+                Logger.Information("FAP20 设备已连接");
             }
         }).ConfigureAwait(false);
     }
@@ -217,6 +239,8 @@ public class FAP20 : IDevice
                 _isConnected = false;
                 CloseDevice();
             }
+
+            Logger.Information("FAP20 设备已断开");
         });
     }
 
@@ -224,6 +248,26 @@ public class FAP20 : IDevice
     /// 会话是否可用：句柄已打开且 USB 物理连接仍在
     /// </summary>
     public bool IsConnected => _isConnected && _deviceHandle != IntPtr.Zero;
+
+    /// <summary>
+    /// 设置设备工作状态（ftm_setDevStatus）
+    /// </summary>
+    /// <param name="status">目标状态</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    public async Task SetStatusAsync(DeviceStatus status, CancellationToken cancellationToken = default)
+    {
+        var ftmStatus = status switch
+        {
+            DeviceStatus.Ready => FtmDeviceStatus.Ready,
+            DeviceStatus.Busy => FtmDeviceStatus.Busy,
+            DeviceStatus.NotReady => FtmDeviceStatus.NotReady,
+            DeviceStatus.NotRegistered => FtmDeviceStatus.NotRegistered,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
+        };
+
+        await SetDevStatusAsync(ftmStatus, cancellationToken: cancellationToken).ConfigureAwait(false);
+        Logger.Information("FAP20 设备状态已设置为 {Status}", status);
+    }
 
     /// <summary>
     /// 操作系统当前是否识别到该 USB 设备
@@ -288,7 +332,7 @@ public class FAP20 : IDevice
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] 物理断开后释放设备句柄失败：{exception}");
+            Logger.Error(exception, "物理断开后释放设备句柄失败");
         }
     }
 
@@ -735,7 +779,7 @@ public class FAP20 : IDevice
         var handle = _deviceHandle;
         if (handle == IntPtr.Zero)
         {
-            Debug.WriteLine($"[FAP20] {operation} 返回 0x75，但设备句柄为空，跳过软复位。");
+            Logger.Warning("{Operation:l} 返回 0x75，但设备句柄为空，跳过软复位", operation);
             return false;
         }
 
@@ -743,13 +787,19 @@ public class FAP20 : IDevice
         {
             var resetResult = FtmNativeMethods.DeviceReset(handle, AutoResetTimeoutMs);
 
-            Debug.WriteLine(resetResult == 0
-                ? $"[FAP20] {operation} 返回 0x75，已执行软复位。"
-                : $"[FAP20] {operation} 返回 0x75，软复位失败，reset rc={resetResult}。");
+            if (resetResult == 0)
+            {
+                Logger.Information("{Operation:l} 返回 0x75，已执行软复位", operation);
+            }
+            else
+            {
+                Logger.Warning("{Operation:l} 返回 0x75，软复位失败，reset rc={ResetResult}",
+                    operation, resetResult);
+            }
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] {operation} 返回 0x75，软复位异常：{exception}");
+            Logger.Error(exception, "{Operation:l} 返回 0x75，软复位异常", operation);
         }
 
         return true;

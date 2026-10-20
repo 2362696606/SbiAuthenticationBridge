@@ -3,7 +3,7 @@ using SbiAuthenticationBridge.Core.Dto;
 
 namespace SbiAuthenticationBridge.Core;
 
-public interface IRegisterSbiDeviceHandle:ISbiDeviceHandle
+public interface IRegisterSbiDevice:ISbiDevice
 {
     /// <summary>
     /// 注册设备Capture

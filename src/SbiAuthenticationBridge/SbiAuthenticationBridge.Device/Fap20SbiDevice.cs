@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Common;
 using SbiAuthenticationBridge.Core.Dto;
 using SbiAuthenticationBridge.Device.Protocol;
+using Serilog;
 
 namespace SbiAuthenticationBridge.Device;
 
@@ -12,7 +12,7 @@ namespace SbiAuthenticationBridge.Device;
 /// <remarks>
 /// 该类只处理 SBI 角色层职责，不包含 USB/FTM 协议实现；具体采集能力由派生句柄提供。
 /// </remarks>
-public class Fap20SbiDeviceHandle : ISbiDeviceHandle
+public class Fap20SbiDevice : ISbiDevice
 {
     private const string SuccessErrorCode = "0";
 
@@ -21,6 +21,8 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
     private const string DeviceStatusNotReady = "Not Ready";
 
     private const string DeviceStatusNotRegistered = "Not Registered";
+
+    private static readonly ILogger Logger = Log.ForContext("SourceContext", "FAP20");
 
     private string? _lastDeviceId;
 
@@ -31,7 +33,7 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
     /// <param name="callbackId">
     /// SBI 设备服务回调地址，须为 1..192 字节可打印 ASCII
     /// </param>
-    public Fap20SbiDeviceHandle(FAP20 device, string callbackId)
+    public Fap20SbiDevice(FAP20 device, string callbackId)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentException.ThrowIfNullOrEmpty(callbackId);
@@ -100,7 +102,7 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
         }
         catch (FtmCommandException exception) when (exception.ResultCode == FAP20.DeviceBusyResultCode)
         {
-            Debug.WriteLine($"[FAP20] SBI 设备发现时设备忙：{exception}");
+            Logger.Warning(exception, "SBI 设备发现时设备忙");
             return
             [
                 new DiscoveryResponse
@@ -113,7 +115,7 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] SBI 设备发现失败：{exception}");
+            Logger.Error(exception, "SBI 设备发现失败");
             return
             [
                 new DiscoveryResponse
@@ -156,12 +158,12 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
         }
         catch (FtmCommandException exception) when (exception.ResultCode == FAP20.DeviceBusyResultCode)
         {
-            Debug.WriteLine($"[FAP20] SBI 设备信息查询时设备忙：{exception}");
+            Logger.Warning(exception, "SBI 设备信息查询时设备忙");
             return [new DeviceInfoResponse { Error = SbiErrorHelper.DeviceBusy }];
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] SBI 设备信息查询失败：{exception}");
+            Logger.Error(exception, "SBI 设备信息查询失败");
             return [new DeviceInfoResponse { Error = SbiErrorHelper.DeviceNotReady }];
         }
     }
@@ -193,7 +195,7 @@ public class Fap20SbiDeviceHandle : ISbiDeviceHandle
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] SBI 操作前连接设备失败：{exception}");
+            Logger.Warning(exception, "SBI 操作前连接设备失败");
             return false;
         }
     }

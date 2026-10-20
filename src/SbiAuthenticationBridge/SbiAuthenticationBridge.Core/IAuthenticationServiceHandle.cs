@@ -10,12 +10,12 @@ namespace SbiAuthenticationBridge.Core;
 /// <para>
 /// 外部传入的认证采集请求中，<see cref="CaptureRequest.Bio"/> 可能包含多项，且各项可能指向不同设备。
 /// 实现方按 <see cref="BioInfo.DeviceId"/>（若提供）、<see cref="BioInfo.Type"/>、
-/// <see cref="BioInfo.DeviceSubId"/> 将每一项路由到对应的 <see cref="IAuthenticationDeviceHandle"/>，
+/// <see cref="BioInfo.DeviceSubId"/> 将每一项路由到对应的 <see cref="IAuthenticationDevice"/>，
 /// 再把各设备的采集结果合并为一个 <see cref="CaptureResponse"/>。
 /// </para>
 /// <para>
 /// 设备发现与设备信息由 <see cref="ISbiServiceHandle"/> 提供；本接口只负责认证采集，
-/// 与设备面的 <see cref="IAuthenticationDeviceHandle"/> 相对应。
+/// 与设备面的 <see cref="IAuthenticationDevice"/> 相对应。
 /// </para>
 /// </remarks>
 public interface IAuthenticationServiceHandle : ISbiServiceHandle

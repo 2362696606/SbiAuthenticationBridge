@@ -1,0 +1,85 @@
+<UserControl
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d"
+    x:Class="SbiAuthenticationBridge.Views.DeviceView"
+    x:DataType="viewModels:DeviceViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:SbiAuthenticationBridge.ViewModels"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,*">
+        <StackPanel>
+            <TextBlock FontSize="18" FontWeight="Bold" Text="{Binding DeviceName}" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Foreground="Gray"
+                Text="{Binding RoleText}" />
+        </StackPanel>
+
+        <StackPanel
+            Grid.Row="1"
+            Margin="0,12,0,0"
+            Orientation="Horizontal"
+            Spacing="12">
+            <TextBlock
+                VerticalAlignment="Center"
+                Text="连接状态：" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="{Binding ConnectionText}"
+                VerticalAlignment="Center" />
+        </StackPanel>
+
+        <WrapPanel
+            Grid.Row="2"
+            Margin="0,12,0,0">
+            <Button
+                Margin="0,0,8,8"
+                Command="{Binding ConnectCommand}"
+                Content="连接" />
+            <Button
+                Margin="0,0,8,8"
+                Command="{Binding DisconnectCommand}"
+                Content="断开" />
+            <Button
+                Margin="0,0,0,8"
+                Command="{Binding RefreshDeviceCommand}"
+                Content="刷新" />
+        </WrapPanel>
+
+        <WrapPanel
+            Grid.Row="3"
+            Margin="0,16,0,0">
+            <TextBlock
+                Margin="0,0,8,8"
+                Text="设备状态"
+                VerticalAlignment="Center" />
+            <ComboBox
+                Width="160"
+                Margin="0,0,8,8"
+                IsEnabled="{Binding HasDevice}"
+                ItemsSource="{Binding StatusOptions}"
+                SelectedItem="{Binding SelectedStatus}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="viewModels:DeviceStatusOption">
+                        <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button
+                Margin="0,0,0,8"
+                Command="{Binding SetStatusCommand}"
+                Content="设置状态" />
+        </WrapPanel>
+
+        <TextBlock
+            Grid.Row="4"
+            Margin="0,12,0,0"
+            Foreground="Red"
+            Text="{Binding ErrorMessage}"
+            TextWrapping="Wrap" />
+    </Grid>
+</UserControl>

@@ -8,7 +8,10 @@ namespace SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
 /// </summary>
 internal static partial class FtmNativeMethods
 {
-    /// <summary>动态库名（不含扩展名），Windows 下解析为 ftmBridgeAPI.dll</summary>
+    /// <summary>
+    /// 动态库名（不含扩展名）：Windows 解析为 ftmBridgeAPI.dll，
+    /// Linux/Android 解析为 libftmBridgeAPI.so
+    /// </summary>
     internal const string LibraryName = "ftmBridgeAPI";
 
     /// <summary>对应 ftm_log_init：初始化日志模块并设置输出等级，须在 <see cref="Open"/> 之前调用</summary>

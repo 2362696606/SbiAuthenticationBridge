@@ -1,7 +1,8 @@
 using System.ComponentModel;
-using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using Serilog;
 
 namespace SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
 
@@ -9,12 +10,21 @@ namespace SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
 /// 按 VID/PID 轮询 USB 设备的物理在线状态。
 /// </summary>
 /// <remarks>
+/// <para>
 /// 句柄非空只说明设备曾经成功打开，不能说明 USB 仍然连接。
-/// 本类通过 SetupAPI 枚举当前存在的设备，在插入/拔出时更新状态并触发事件。
+/// 本类在 Windows 上通过 SetupAPI、在 Linux/Android 上通过 sysfs 枚举当前存在的设备，
+/// 在插入/拔出时更新状态并触发事件。
+/// </para>
+/// <para>
+/// 无法枚举 USB 拓扑的平台（如 macOS）不做物理探测，直接视为在线；实际连接状态由
+/// <c>ftmBridgeAPI</c> 的打开/读写结果决定。
+/// </para>
 /// </remarks>
 internal sealed class UsbPresenceMonitor : IAsyncDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+
+    private static readonly ILogger Logger = Log.ForContext("SourceContext", "FAP20");
 
     private readonly ushort _vendorId;
 
@@ -30,11 +40,6 @@ internal sealed class UsbPresenceMonitor : IAsyncDisposable
 
     internal UsbPresenceMonitor(ushort vendorId, ushort productId)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new PlatformNotSupportedException("FAP20 的 USB 物理在线监测目前只支持 Windows。");
-        }
-
         if (vendorId == 0)
         {
             throw new ArgumentOutOfRangeException(nameof(vendorId), "USB vendorId 不能为 0。");
@@ -64,6 +69,7 @@ internal sealed class UsbPresenceMonitor : IAsyncDisposable
 
         var initialPresent = Probe();
         _isPresent = initialPresent;
+        Logger.Debug("USB 在线监测已启动，初始状态 {Present}", initialPresent);
         _loop = Task.Run(() => RunAsync(initialPresent, _cts.Token));
     }
 
@@ -81,13 +87,24 @@ internal sealed class UsbPresenceMonitor : IAsyncDisposable
     {
         try
         {
-            return WindowsUsbDeviceEnumerator.IsPresent(_vendorId, _productId);
+            if (OperatingSystem.IsWindows())
+            {
+                return WindowsUsbDeviceEnumerator.IsPresent(_vendorId, _productId);
+            }
+
+            if (OperatingSystem.IsAndroid() || OperatingSystem.IsLinux())
+            {
+                // 无法读取 sysfs 时返回 null，此时不阻塞连接，交由原生库报告真实状态
+                return LinuxUsbDeviceEnumerator.TryIsPresent(_vendorId, _productId) ?? true;
+            }
+
+            return true;
         }
         catch (Exception exception)
         {
-            // 枚举失败不等于设备已拔出，保持上一次状态
-            Debug.WriteLine($"[FAP20] USB 物理在线探测失败：{exception}");
-            return _isPresent;
+            // 枚举失败不等于设备已拔出；不阻塞连接，由原生打开操作给出最终结果
+            Logger.Warning(exception, "USB 物理在线探测失败");
+            return true;
         }
     }
 
@@ -109,13 +126,22 @@ internal sealed class UsbPresenceMonitor : IAsyncDisposable
                 last = present;
                 _isPresent = present;
 
+                if (present)
+                {
+                    Logger.Information("USB 设备已插入");
+                }
+                else
+                {
+                    Logger.Information("USB 设备已拔出");
+                }
+
                 try
                 {
                     PresenceChanged?.Invoke(this, present);
                 }
                 catch (Exception exception)
                 {
-                    Debug.WriteLine($"[FAP20] USB 在线状态订阅方抛出异常：{exception}");
+                    Logger.Error(exception, "USB 在线状态订阅方抛出异常");
                 }
             }
         }
@@ -147,11 +173,89 @@ internal sealed class UsbPresenceMonitor : IAsyncDisposable
             }
             catch (Exception exception)
             {
-                Debug.WriteLine($"[FAP20] USB 在线监测停止失败：{exception}");
+                Logger.Error(exception, "USB 在线监测停止失败");
             }
         }
 
         _cts.Dispose();
+    }
+}
+
+/// <summary>
+/// 通过 sysfs 按 VID/PID 枚举 Linux/Android 上当前存在的 USB 设备。
+/// </summary>
+internal static class LinuxUsbDeviceEnumerator
+{
+    private const string UsbDevicesRoot = "/sys/bus/usb/devices";
+
+    private static readonly ILogger Logger = Log.ForContext("SourceContext", "FAP20");
+
+    /// <summary>
+    /// 判断指定 VID/PID 的设备是否存在
+    /// </summary>
+    /// <param name="vendorId">USB 厂商 ID</param>
+    /// <param name="productId">USB 产品 ID</param>
+    /// <returns>
+    /// <c>true</c>/<c>false</c> 表示是否存在；<c>null</c> 表示当前环境无法枚举
+    /// （如 sysfs 不可访问），调用方应放行连接，由原生库报告真实状态。
+    /// </returns>
+    internal static bool? TryIsPresent(ushort vendorId, ushort productId)
+    {
+        try
+        {
+            if (!Directory.Exists(UsbDevicesRoot))
+            {
+                return null;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(UsbDevicesRoot))
+            {
+                var vendor = ReadId(Path.Combine(directory, "idVendor"));
+                var product = ReadId(Path.Combine(directory, "idProduct"));
+
+                if (vendor == vendorId && product == productId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Logger.Warning(exception, "无权读取 USB sysfs");
+            return null;
+        }
+        catch (IOException exception)
+        {
+            Logger.Warning(exception, "读取 USB sysfs 失败");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 读取十六进制格式的 idVendor/idProduct
+    /// </summary>
+    private static ushort? ReadId(string path)
+    {
+        try
+        {
+            var text = File.ReadAllText(path).Trim();
+
+            return ushort.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture,
+                out var value)
+                ? value
+                : null;
+        }
+        catch (IOException)
+        {
+            // 设备节点没有对应属性文件时跳过
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 }
 

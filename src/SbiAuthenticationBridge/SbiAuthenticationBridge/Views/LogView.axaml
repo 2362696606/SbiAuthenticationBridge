@@ -1,0 +1,97 @@
+<UserControl
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d"
+    x:Class="SbiAuthenticationBridge.Views.LogView"
+    x:DataType="viewModels:LogViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:SbiAuthenticationBridge.ViewModels"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Margin="8" RowDefinitions="Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock FontSize="18" FontWeight="Bold" Text="运行日志" />
+                <TextBlock
+                    Margin="0,4,0,0"
+                    Foreground="Gray"
+                    Text="Host、设备、Intent 与界面操作日志，每 300ms 刷新。"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <WrapPanel Grid.Row="1" Margin="0,8,0,0">
+                <CheckBox
+                    Margin="0,0,12,0"
+                    Content="自动滚动"
+                    IsChecked="{Binding AutoScroll}"
+                    VerticalAlignment="Center" />
+
+                <Button
+                    Command="{Binding ClearCommand}"
+                    Content="清空" />
+            </WrapPanel>
+        </Grid>
+
+        <Border
+            Grid.Row="1"
+            Margin="0,12,0,0"
+            BorderBrush="#33000000"
+            BorderThickness="1"
+            CornerRadius="4">
+            <ScrollViewer x:Name="LogScrollViewer" Padding="4">
+                <ItemsControl ItemsSource="{Binding Entries}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="viewModels:LogEntryViewModel">
+                            <StackPanel Margin="0,3">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Foreground="Gray"
+                                        Text="{Binding TimeText}" />
+
+                                    <TextBlock
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        FontWeight="SemiBold"
+                                        Foreground="{Binding LevelBrush}"
+                                        Text="{Binding LevelText}" />
+
+                                    <TextBlock
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Foreground="Gray"
+                                        Text="{Binding Category}" />
+                                </StackPanel>
+
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    FontFamily="Consolas"
+                                    FontSize="12"
+                                    Text="{Binding Message}"
+                                    TextWrapping="Wrap" />
+
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    FontFamily="Consolas"
+                                    FontSize="11"
+                                    Foreground="IndianRed"
+                                    IsVisible="{Binding HasException}"
+                                    Text="{Binding ExceptionText}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock
+            Grid.Row="2"
+            Margin="0,8,0,0"
+            Foreground="Gray"
+            Text="最多保留 1000 条；异常信息显示在消息下方。" />
+    </Grid>
+</UserControl>

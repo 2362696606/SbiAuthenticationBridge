@@ -11,4 +11,12 @@
       <ProjectReference Include="..\SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj" />
     </ItemGroup>
 
+    <!-- 随程序集复制原生库；Windows 为 ftmBridgeAPI.dll/libusb-1.0.dll，
+         Linux/Android 侧放入同名 lib*.so 后也会一并复制 -->
+    <ItemGroup>
+      <None Include="Lib\ICT\FAP20\*.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <None Include="Lib\ICT\FAP20\*.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <None Include="Lib\ICT\FAP20\FingerPrintDebug.INI" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+
 </Project>
