@@ -21,7 +21,13 @@ public class App : PrismApplication
         // Prism 的初始化入口，缺少该调用时 CreateShell 不会执行
         base.Initialize();
 #if DEBUG
-        this.AttachDeveloperTools();
+        // Android 上没有可连接的 Avalonia DevTools 实例，连接失败会在 UI 线程
+        // 抛出 DevToolsUnreachableException（JavaProxyThrowable）并导致进程崩溃。
+        // DevTools 只在桌面调试时启用。
+        if (!OperatingSystem.IsAndroid())
+        {
+            this.AttachDeveloperTools();
+        }
 #endif
     }
 

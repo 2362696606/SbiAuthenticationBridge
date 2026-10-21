@@ -9,12 +9,38 @@
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
         <AndroidPackageFormat>apk</AndroidPackageFormat>
         <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+        <!-- 统一 CLI 与 Rider 的部署方式，避免 Fast Deployment 覆盖目录与 APK 内程序集不一致。
+             调试时程序集随 APK 部署，PDB 仍由调试器从本地读取。 -->
+        <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     </PropertyGroup>
 
     <ItemGroup>
         <AndroidResource Include="Icon.png">
             <Link>Resources\drawable\Icon.png</Link>
         </AndroidResource>
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Android 版 ftmBridgeAPI（arm64-v8a）：由 .NET Android SDK 打进 APK 的 lib/arm64-v8a/ -->
+        <AndroidNativeLibrary Include="..\SbiAuthenticationBridge.Device\Lib\ICT\FAP20\android\arm64-v8a\libftmBridgeAPI.so">
+            <Abi>arm64-v8a</Abi>
+        </AndroidNativeLibrary>
+
+        <!-- INI 随包携带，启动时复制到 FilesDir 供 ftm_set_config_path 使用 -->
+        <AndroidAsset Include="..\SbiAuthenticationBridge.Device\Lib\ICT\FAP20\FingerPrintDebug.INI">
+            <Link>FingerPrintDebug.INI</Link>
+        </AndroidAsset>
+
+        <!-- FCG-3M115 公开证书（可选）：存在时随包携带并复制到 FilesDir。
+             Host P12/私钥禁止放入 APK，必须导入 Keystore。 -->
+        <AndroidAsset Include="Assets\fcg3m115_app.cert.der"
+                      Condition="Exists('Assets\fcg3m115_app.cert.der')">
+            <Link>fcg3m115_app.cert.der</Link>
+        </AndroidAsset>
+        <AndroidAsset Include="Assets\fcg3m115_root_ca.cert.der"
+                      Condition="Exists('Assets\fcg3m115_root_ca.cert.der')">
+            <Link>fcg3m115_root_ca.cert.der</Link>
+        </AndroidAsset>
     </ItemGroup>
 
     <ItemGroup>

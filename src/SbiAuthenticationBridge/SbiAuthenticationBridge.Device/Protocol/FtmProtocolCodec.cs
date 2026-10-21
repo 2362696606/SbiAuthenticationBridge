@@ -69,26 +69,6 @@ internal static class FtmProtocolCodec
         return payload;
     }
 
-    internal static byte[] EncodeLoadCertificate(ReadOnlySpan<byte> der)
-    {
-        if (der.Length is < 1 or > MaxCertificateLength)
-        {
-            throw new FtmProtocolException(
-                $"DER 证书长度须为 1..{MaxCertificateLength} 字节，实际为 {der.Length}。");
-        }
-
-        var payload = new byte[37 + der.Length];
-        payload[0] = 1;
-        payload[1] = 1; // SERVER_ENCRYPTION
-        payload[2] = 1; // DER_X509
-        payload[3] = (byte)(der.Length >> 8);
-        payload[4] = (byte)der.Length;
-        SHA256.HashData(der).CopyTo(payload, 5);
-        der.CopyTo(payload.AsSpan(37));
-
-        return payload;
-    }
-
     internal static byte[] EncodeCapture(FtmCaptureRequest request, bool registration)
     {
         ValidateRange((int)request.Environment, 0, 3, nameof(request.Environment));

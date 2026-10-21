@@ -43,4 +43,9 @@ public sealed class SbiDeviceEntry
     /// SBI 设备句柄；设备不支持 SBI 时为空
     /// </summary>
     public ISbiDevice? SbiDevice { get; }
+
+    /// <summary>
+    /// 设备密钥轮换能力；设备不支持时为空
+    /// </summary>
+    public IDeviceKeyRotation? KeyRotation => Device as IDeviceKeyRotation;
 }

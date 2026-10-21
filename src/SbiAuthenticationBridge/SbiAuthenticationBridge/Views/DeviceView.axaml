@@ -10,7 +10,7 @@
     xmlns:viewModels="using:SbiAuthenticationBridge.ViewModels"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,*">
+    <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
         <StackPanel>
             <TextBlock FontSize="18" FontWeight="Bold" Text="{Binding DeviceName}" />
             <TextBlock
@@ -75,8 +75,25 @@
                 Content="设置状态" />
         </WrapPanel>
 
-        <TextBlock
+        <WrapPanel
             Grid.Row="4"
+            Margin="0,16,0,0">
+            <Button
+                Margin="0,0,8,8"
+                Click="OnRotateKeyClick"
+                Content="更换密钥"
+                IsEnabled="{Binding CanRotateKey}"
+                ToolTip.Tip="用于 CTK 的 Key Rotation 用例：更换设备签名密钥" />
+            <TextBlock
+                Margin="0,0,0,8"
+                VerticalAlignment="Center"
+                Foreground="Gray"
+                Text="{Binding KeyInfoText}"
+                TextWrapping="Wrap" />
+        </WrapPanel>
+
+        <TextBlock
+            Grid.Row="5"
             Margin="0,12,0,0"
             Foreground="Red"
             Text="{Binding ErrorMessage}"

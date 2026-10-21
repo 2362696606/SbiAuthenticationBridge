@@ -24,6 +24,32 @@ internal static partial class FtmNativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial IntPtr Open();
 
+    /// <summary>
+    /// 对应 ftm_open_fd：使用宿主已打开的 USB 文件描述符初始化设备（Android）。
+    /// fd 的所有权仍属于宿主的 <c>UsbDeviceConnection</c>，关闭设备后由宿主释放。
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "ftm_open_fd")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial IntPtr OpenFromFileDescriptor(int fileDescriptor);
+
+    /// <summary>
+    /// 对应 ftm_set_config_path：指定 FingerPrintDebug.INI 的绝对路径，
+    /// 须在 <see cref="Open"/> / <see cref="OpenFromFileDescriptor"/> 之前调用。
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "ftm_set_config_path",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void SetConfigPath(string path);
+
+    /// <summary>
+    /// 对应 ftm_log_init_path：把 SDK 日志写入指定文件并设置输出等级。
+    /// Android 的当前目录不可写，应使用应用私有目录的绝对路径。
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "ftm_log_init_path",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void LogInitPath(string path, int level);
+
     /// <summary>对应 ftm_discover：探测设备在线状态与基本能力，请求为 DISCOVER(0x01) 紧凑二进制 payload</summary>
     [LibraryImport(LibraryName, EntryPoint = "ftm_discover")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

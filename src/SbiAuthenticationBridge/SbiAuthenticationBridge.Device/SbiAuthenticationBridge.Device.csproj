@@ -11,6 +11,14 @@
       <ProjectReference Include="..\SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj" />
     </ItemGroup>
 
+    <!-- FCG-3M115 公开证书：Root 用于验证 Module 证书，Host 证书用于对照/上传 -->
+    <ItemGroup>
+      <EmbeddedResource Include="Lib\ICT\FAP20\fcg3m115_root_ca.cert.der"
+                        LogicalName="SbiAuthenticationBridge.Device.fcg3m115_root_ca.cert.der" />
+      <EmbeddedResource Include="Lib\ICT\FAP20\fcg3m115_host.cert.der"
+                        LogicalName="SbiAuthenticationBridge.Device.fcg3m115_host.cert.der" />
+    </ItemGroup>
+
     <!-- 随程序集复制原生库；Windows 为 ftmBridgeAPI.dll/libusb-1.0.dll，
          Linux/Android 侧放入同名 lib*.so 后也会一并复制 -->
     <ItemGroup>

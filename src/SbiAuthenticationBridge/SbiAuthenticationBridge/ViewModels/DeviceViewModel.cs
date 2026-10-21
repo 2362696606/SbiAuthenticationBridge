@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Core.Dto;
 using SbiAuthenticationBridge.Core.Dto.Enum;
 using SbiAuthenticationBridge.Host;
 using Serilog;
@@ -112,6 +113,27 @@ public partial class DeviceViewModel : ObservableObject
             : "未连接";
 
     /// <summary>
+    /// 当前设备是否支持更换密钥
+    /// </summary>
+    public bool HasKeyRotation => _entry?.KeyRotation is not null;
+
+    /// <summary>
+    /// 更换密钥是否需要选择证书文件
+    /// </summary>
+    public bool RequiresKeyCertificate => _entry?.KeyRotation?.RequiresCertificate ?? false;
+
+    /// <summary>
+    /// 当前是否可执行更换密钥
+    /// </summary>
+    public bool CanRotateKey => _entry is { Device.IsConnected: true, KeyRotation: not null };
+
+    /// <summary>
+    /// 最近一次更换密钥的结果
+    /// </summary>
+    [ObservableProperty]
+    public partial string? KeyInfoText { get; set; }
+
+    /// <summary>
     /// 重新读取当前选择并同步连接状态
     /// </summary>
     public void Refresh()
@@ -214,6 +236,52 @@ public partial class DeviceViewModel : ObservableObject
     private bool CanSetStatus() => _entry is { Device.IsConnected: true } && SelectedStatus is not null;
 
     /// <summary>
+    /// 更换当前设备的密钥，供界面在选定证书后调用
+    /// </summary>
+    /// <param name="certificateDer">
+    /// 新的 DKL 证书（DER）；<see cref="RequiresKeyCertificate"/> 为 false 时可传 <c>null</c>
+    /// </param>
+    public async Task RotateDeviceKeyAsync(ReadOnlyMemory<byte>? certificateDer = null)
+    {
+        var entry = _entry;
+        var keyRotation = entry?.KeyRotation;
+        if (entry is null || keyRotation is null)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        Logger.Information("更换设备 {Device:l} 的密钥", entry.Name);
+
+        try
+        {
+            var info = await keyRotation.RotateKeyAsync(certificateDer);
+            KeyInfoText = DescribeKey(info);
+            Logger.Information("设备 {Device:l} 密钥已更换，代数 {RotationId}，指纹 {Fingerprint:l}",
+                entry.Name, info.RotationId, info.Fingerprint);
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "更换设备 {Device:l} 密钥失败", entry.Name);
+            ErrorMessage = exception.Message;
+        }
+    }
+
+    /// <summary>
+    /// 把设备密钥信息格式化为界面文本
+    /// </summary>
+    private static string DescribeKey(DeviceKeyInfo info)
+    {
+        var fingerprint = info.Fingerprint is { Length: > 16 } value
+            ? $"{value[..16]}…"
+            : info.Fingerprint;
+
+        return string.IsNullOrEmpty(fingerprint)
+            ? $"密钥代数 {info.RotationId}"
+            : $"密钥代数 {info.RotationId} · 指纹 {fingerprint}";
+    }
+
+    /// <summary>
     /// 刷新命令
     /// </summary>
     [RelayCommand]
@@ -239,11 +307,14 @@ public partial class DeviceViewModel : ObservableObject
     {
         _entry = entry;
         ErrorMessage = null;
+        KeyInfoText = null;
         Logger.Debug("当前操作设备切换为 {Device:l}", entry?.Name ?? "无");
 
         OnPropertyChanged(nameof(DeviceName));
         OnPropertyChanged(nameof(RoleText));
         OnPropertyChanged(nameof(HasDevice));
+        OnPropertyChanged(nameof(HasKeyRotation));
+        OnPropertyChanged(nameof(RequiresKeyCertificate));
 
         NotifyConnectionStateChanged();
     }
@@ -252,6 +323,7 @@ public partial class DeviceViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsConnected));
         OnPropertyChanged(nameof(ConnectionText));
+        OnPropertyChanged(nameof(CanRotateKey));
 
         ConnectCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();

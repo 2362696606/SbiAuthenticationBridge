@@ -10,6 +10,15 @@
 *.userosscache
 *.sln.docstates
 
+# Local agent/IDE settings
+.claude/
+
+# Private keys and secrets must never be committed
+*.key.pem
+*.p12
+*.pfx
+*.password
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

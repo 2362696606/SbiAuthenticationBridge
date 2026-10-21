@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace SbiAuthenticationBridge.Core.Dto;
@@ -26,6 +27,18 @@ public class BiometricInfo
     /// </remarks>
     [JsonPropertyName("data")]
     public string? Data { get; set; }
+
+    /// <summary>
+    /// <see cref="Data"/> 的 JWT payload 解码结果
+    /// </summary>
+    /// <remarks>
+    /// CTK 的 <c>AuthCaptureResponseSchema</c> 和 <c>ResponseMismatchValidator</c> 要求该字段存在；
+    /// 上位机只解码、不修改 JWT，签名仍由校验方基于 <see cref="Data"/> 验证。
+    /// 失败响应没有可解码数据，此属性为 null 时不写出。
+    /// </remarks>
+    [JsonPropertyName("dataDecoded")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? DataDecoded { get; set; }
 
     /// <summary>
     /// 哈希链值

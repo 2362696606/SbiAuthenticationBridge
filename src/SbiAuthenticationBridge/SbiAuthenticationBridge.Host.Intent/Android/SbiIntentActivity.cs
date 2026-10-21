@@ -117,7 +117,12 @@ public sealed class SbiIntentActivity : Activity
                           $"content://{SbiIntentActions.ContentProviderAuthority}/sbi/{id}")
                       ?? throw new InvalidOperationException("无法构造 SBI 响应 content URI。");
 
-            reply.PutExtra(SbiIntentActions.ResponseExtra, uri.ToString());
+            // SBI 调用方（mosip-sbi-capacitor-plugin）用 Bundle.getParcelable("response")
+            // 取 content URI；这里必须放 Uri 对象，放字符串会得到 null 并导致读取失败。
+            // GrantReadUriPermission 只对 Intent.data（或 ClipData）中的 URI 生效，
+            // 所以还必须把 URI 设为 data，否则调用方会得到 "No content provider"。
+            reply.SetData(uri);
+            reply.PutExtra(SbiIntentActions.ResponseExtra, uri);
             reply.AddFlags(ActivityFlags.GrantReadUriPermission);
         }
         else

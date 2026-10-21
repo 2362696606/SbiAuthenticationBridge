@@ -51,6 +51,16 @@ public static class SbiErrorHelper
         Create("102", "Technical error during extraction");
 
     /// <summary>
+    /// 提取时出现技术错误，并附带具体原因（用于现场排查）。
+    /// </summary>
+    /// <param name="detail">具体原因</param>
+    /// <returns>errorCode 为 102、errorInfo 为具体原因的错误对象。</returns>
+    public static SbiError TechnicalErrorDetail(string detail) =>
+        Create("102", string.IsNullOrWhiteSpace(detail)
+            ? "Technical error during extraction"
+            : detail);
+
+    /// <summary>
     /// 检测到设备被篡改。
     /// </summary>
     public static SbiError DeviceTamperDetected => Create("103", "Device tamper detected");

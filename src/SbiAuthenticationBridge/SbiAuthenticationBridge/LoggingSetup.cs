@@ -18,6 +18,18 @@ public static class LoggingSetup
 
     private static bool _configured;
 
+    private static string? _logDirectory;
+
+    /// <summary>
+    /// 设置日志文件目录；须在 <see cref="EnsureConfigured"/> 之前调用。
+    /// Android 应传入应用私有目录，否则当前目录不可写。
+    /// </summary>
+    /// <param name="directory">日志目录；为空时只写界面与控制台</param>
+    public static void SetLogDirectory(string? directory)
+    {
+        _logDirectory = string.IsNullOrWhiteSpace(directory) ? null : directory;
+    }
+
     /// <summary>
     /// 初始化 Serilog；可重复调用
     /// </summary>
@@ -30,13 +42,22 @@ public static class LoggingSetup
                 return;
             }
 
-            Log.Logger = new LoggerConfiguration()
+            var configuration = new LoggerConfiguration()
                 .MinimumLevel.Debug()
                 .Enrich.FromLogContext()
                 .WriteTo.Sink(LogViewSink.Instance)
-                .WriteTo.Console(outputTemplate: ConsoleTemplate)
-                .CreateLogger();
+                .WriteTo.Console(outputTemplate: ConsoleTemplate);
 
+            if (_logDirectory is { } directory)
+            {
+                Directory.CreateDirectory(directory);
+                configuration.WriteTo.File(Path.Combine(directory, "app-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    shared: true,
+                    outputTemplate: ConsoleTemplate);
+            }
+
+            Log.Logger = configuration.CreateLogger();
             _configured = true;
         }
     }

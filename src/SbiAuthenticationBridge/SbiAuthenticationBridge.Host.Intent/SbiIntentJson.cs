@@ -15,7 +15,9 @@ internal static class SbiIntentJson
     internal static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // CTK 会把 deviceSubId 等数值字段发成字符串（如 "0"），允许从字符串读取数字
+        NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
 
     /// <summary>

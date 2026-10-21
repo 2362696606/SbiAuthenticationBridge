@@ -147,6 +147,31 @@ public sealed class SbiIntentHost : ISbiService, ISbiServiceState
     public async Task<SbiIntentResult> HandleAsync(string? action, byte[]? input,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            var result = await HandleCoreAsync(action, input, cancellationToken)
+                .ConfigureAwait(false);
+
+            SbiMessageLog.Write(action, input, result.Payload);
+            return result;
+        }
+        catch (Exception exception)
+        {
+            SbiMessageLog.Write(action, input, null, exception);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 处理一次 Intent 调用（实际分发逻辑）
+    /// </summary>
+    /// <param name="action">Intent action</param>
+    /// <param name="input"><c>input</c> extra 中的 UTF-8 JSON 字节</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>要写回 <c>response</c> extra 的结果</returns>
+    private async Task<SbiIntentResult> HandleCoreAsync(string? action, byte[]? input,
+        CancellationToken cancellationToken)
+    {
         if (!SbiIntentActions.TryParse(action, AppId, out var operation))
         {
             Logger.Warning("未知的 SBI Intent 动作：{Action:l}", action);

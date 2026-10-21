@@ -25,6 +25,7 @@ sealed class Program
     {
         LoggingSetup.EnsureConfigured();
         Logger.Information("桌面宿主启动");
+        LogFcg3M115Configuration();
 
         try
         {
@@ -44,6 +45,25 @@ sealed class Program
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace();
+
+    /// <summary>
+    /// 启动时提示 FCG-3M115 采图所需的配置
+    /// </summary>
+    private static void LogFcg3M115Configuration()
+    {
+        var p12 = Environment.GetEnvironmentVariable("FCG3M115_HOST_P12");
+        var appCertificate = Environment.GetEnvironmentVariable("FCG3M115_APP_CERT");
+
+        if (string.IsNullOrWhiteSpace(p12))
+        {
+            Logger.Warning("未设置 FCG3M115_HOST_P12，真实 FAP20 无法完成 FCG-3M115 采图。");
+        }
+
+        if (string.IsNullOrWhiteSpace(appCertificate))
+        {
+            Logger.Warning("未设置 FCG3M115_APP_CERT，真实 FAP20 无法加密 bioValue。");
+        }
+    }
 
     /// <summary>
     /// 向共享界面注入桌面端设备；SBI 服务待 HTTP 宿主实现后注册

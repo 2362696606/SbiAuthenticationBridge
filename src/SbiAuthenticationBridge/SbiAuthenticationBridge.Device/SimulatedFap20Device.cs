@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,10 +20,11 @@ namespace SbiAuthenticationBridge.Device;
 /// Intent 宿主、服务编排与界面。Debug 构建默认使用本设备，Release 构建使用真实 FAP20。
 /// </para>
 /// <para>
-/// 模拟数据只保证字段结构与取值格式正确，JWT/会话密钥/证书摘要均为占位值，不能用于真实认证。
+/// 模拟数据只保证字段结构与取值格式正确；采集 JWT 由本机生成的设备密钥签名，
+/// 会话密钥与证书摘要仍为占位值，不能用于真实认证。
 /// </para>
 /// </remarks>
-public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
+public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice, IDeviceKeyRotation
 {
     private const string SpecVersion = "0.9.5";
 
@@ -43,9 +45,20 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
 
     private readonly string _callbackId;
 
+    /// <summary>
+    /// 保护模拟设备密钥与证书；签名与轮换都在此锁内完成
+    /// </summary>
+    private readonly Lock _keyGate = new();
+
     private volatile bool _connected;
 
     private volatile DeviceStatus _status = DeviceStatus.Ready;
+
+    private RSA? _deviceKey;
+
+    private X509Certificate2? _deviceCertificate;
+
+    private int _rotationId = 1;
 
     private bool _disposed;
 
@@ -91,8 +104,21 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        _disposed = true;
-        _connected = false;
+        lock (_keyGate)
+        {
+            if (_disposed)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            _disposed = true;
+            _connected = false;
+            _deviceKey?.Dispose();
+            _deviceCertificate?.Dispose();
+            _deviceKey = null;
+            _deviceCertificate = null;
+        }
+
         return ValueTask.CompletedTask;
     }
 
@@ -142,14 +168,15 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
             ServiceVersion = SpecVersion,
             DeviceSubId = [1],
             CallbackId = _callbackId,
-            DigitalId = CreateDigitalId(),
+            DigitalId = CreateSignedDigitalId(),
             DeviceCode = DeviceCode,
             Env = "Staging",
             Purpose = "Auth",
             SpecVersion = [SpecVersion]
         };
 
-        var encoded = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(info, JsonOptions));
+        // 已注册设备的 deviceInfo 必须由设备密钥签名，CTK 从中读取 x5c 跟踪密钥轮换
+        var encoded = CreateSignedJwt(JsonSerializer.SerializeToUtf8Bytes(info, JsonOptions));
 
         Logger.Information("模拟 FAP20 应答设备信息，状态 {Status}", _status);
         return Task.FromResult<IReadOnlyList<DeviceInfoResponse>>(
@@ -207,7 +234,7 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
     /// <summary>
     /// 构造单个 bio 项的模拟采集结果
     /// </summary>
-    private static BiometricInfo CreateCapture(BioInfo bio, CaptureRequest request)
+    private BiometricInfo CreateCapture(BioInfo bio, CaptureRequest request)
     {
         if (!string.IsNullOrEmpty(bio.Type)
             && !string.Equals(bio.Type, "Finger", StringComparison.OrdinalIgnoreCase))
@@ -231,7 +258,7 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
 
         var captureData = new CaptureData
         {
-            DigitalId = CreateDigitalId(),
+            DigitalId = CreateSignedDigitalId(),
             DeviceCode = DeviceCode,
             DeviceServiceVersion = SpecVersion,
             BioType = "Finger",
@@ -251,7 +278,7 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
         return new BiometricInfo
         {
             SpecVersion = SpecVersion,
-            Data = CreateJwt(payload),
+            Data = CreateSignedJwt(payload),
             Hash = ComputeHash(bio.PreviousHash, isoData),
             SessionKey = Base64UrlEncode(SHA256.HashData("mock-session-key"u8)),
             Thumbprint = Convert.ToHexString(SHA256.HashData("mock-certificate"u8)),
@@ -260,36 +287,146 @@ public sealed class SimulatedFap20Device : IAuthenticationDevice, IDevice
     }
 
     /// <summary>
-    /// 构造模拟的设备数字身份（未签名 base64url payload）
+    /// 构造模拟的设备数字身份（未签名 base64url payload，用于设备发现）
     /// </summary>
-    private static string CreateDigitalId()
-    {
-        var digitalId = new DigitalId
-        {
-            SerialNo = DeviceCode,
-            Make = Manufacturer,
-            Model = Model,
-            Type = "Finger",
-            DeviceSubType = "Single",
-            DeviceProvider = Manufacturer,
-            DeviceProviderId = "SIM",
-            DateTime = DateTimeOffset.UtcNow.ToString("O")
-        };
+    private static string CreateDigitalId() =>
+        Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(CreateDigitalIdValue(), JsonOptions));
 
-        return Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(digitalId, JsonOptions));
+    /// <summary>
+    /// 构建设备密钥签名的数字身份（用于设备信息与采集数据）
+    /// </summary>
+    private string CreateSignedDigitalId() =>
+        CreateSignedJwt(JsonSerializer.SerializeToUtf8Bytes(CreateDigitalIdValue(), JsonOptions));
+
+    /// <summary>
+    /// 构建设备数字身份内容
+    /// </summary>
+    private static DigitalId CreateDigitalIdValue() => new()
+    {
+        SerialNo = DeviceCode,
+        Make = Manufacturer,
+        Model = Model,
+        Type = "Finger",
+        DeviceSubType = "Single",
+        DeviceProvider = Manufacturer,
+        DeviceProviderId = "SIM",
+        DateTime = DateTimeOffset.UtcNow.ToString("O")
+    };
+
+    /// <summary>
+    /// 使用当前设备密钥签名采集数据，并在 JWT 头中携带证书（x5c）
+    /// </summary>
+    /// <param name="payload">JWT 载荷</param>
+    /// <returns>JWT</returns>
+    private string CreateSignedJwt(byte[] payload)
+    {
+        lock (_keyGate)
+        {
+            var certificate = EnsureDeviceCertificateLocked();
+            var certificateDer = certificate.Export(X509ContentType.Cert);
+
+            var header = new
+            {
+                alg = "RS256",
+                typ = "JWT",
+                x5c = new[] { Convert.ToBase64String(certificateDer) }
+            };
+
+            var headerPart = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header, JsonOptions));
+            var payloadPart = Base64UrlEncode(payload);
+            var signingInput = Encoding.ASCII.GetBytes($"{headerPart}.{payloadPart}");
+            var signature = _deviceKey!.SignData(signingInput, HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1);
+
+            return $"{headerPart}.{payloadPart}.{Base64UrlEncode(signature)}";
+        }
+    }
+
+    #region IDeviceKeyRotation
+
+    /// <inheritdoc />
+    public bool RequiresCertificate => false;
+
+    /// <inheritdoc />
+    public Task<DeviceKeyInfo> GetKeyInfoAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_keyGate)
+        {
+            var info = CreateDeviceKeyInfoLocked(EnsureDeviceCertificateLocked());
+            return Task.FromResult(info);
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>模拟设备始终在本机生成新的 RSA 密钥与自签证书，忽略外部证书。</remarks>
+    public Task<DeviceKeyInfo> RotateKeyAsync(ReadOnlyMemory<byte>? certificateDer = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // 模拟设备没有可安装证书的硬件密钥区，始终生成本机新密钥
+        _ = certificateDer;
+
+        lock (_keyGate)
+        {
+            _deviceKey?.Dispose();
+            _deviceCertificate?.Dispose();
+            _deviceKey = null;
+            _deviceCertificate = null;
+            _rotationId++;
+
+            var info = CreateDeviceKeyInfoLocked(EnsureDeviceCertificateLocked());
+            Logger.Information("模拟 FAP20 密钥已更换，代数 {RotationId}，指纹 {Fingerprint:l}",
+                info.RotationId, info.Fingerprint);
+
+            return Task.FromResult(info);
+        }
     }
 
     /// <summary>
-    /// 构造结构正确的模拟 JWT（签名不可验）
+    /// 生成新的 RSA 设备密钥与自签证书；调用方需持有 <see cref="_keyGate"/>
     /// </summary>
-    private static string CreateJwt(byte[] payload)
+    private X509Certificate2 EnsureDeviceCertificateLocked()
     {
-        var header = Base64UrlEncode("""{"alg":"RS256","typ":"JWT"}"""u8);
-        var body = Base64UrlEncode(payload);
-        var signature = Base64UrlEncode(SHA256.HashData(payload));
+        if (_deviceCertificate is not null)
+        {
+            return _deviceCertificate;
+        }
 
-        return $"{header}.{body}.{signature}";
+        var key = RSA.Create(2048);
+        var request = new CertificateRequest($"CN={DeviceCode}", key, HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey,
+            false));
+
+        _deviceCertificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(1));
+        _deviceKey = key;
+
+        Logger.Information("模拟 FAP20 已生成设备密钥，代数 {RotationId}", _rotationId);
+        return _deviceCertificate;
     }
+
+    /// <summary>
+    /// 构造设备密钥信息；调用方需持有 <see cref="_keyGate"/>
+    /// </summary>
+    private DeviceKeyInfo CreateDeviceKeyInfoLocked(X509Certificate2 certificate) => new()
+    {
+        RotationId = _rotationId,
+        SubjectPublicKeyInfo = _deviceKey!.ExportSubjectPublicKeyInfo(),
+        Fingerprint = Convert.ToHexString(SHA256.HashData(certificate.Export(X509ContentType.Cert)))
+    };
+
+    #endregion
 
     /// <summary>
     /// 按“上一个哈希 + 本次 ISO 数据”的 SHA-256 规则计算哈希链值
