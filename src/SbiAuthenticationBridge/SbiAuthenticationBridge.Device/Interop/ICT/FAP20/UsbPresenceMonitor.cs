@@ -12,7 +12,7 @@ namespace SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
 /// 句柄非空只说明设备曾经成功打开，不能说明 USB 仍然连接。
 /// 本类通过 SetupAPI 枚举当前存在的设备，在插入/拔出时更新状态并触发事件。
 /// </remarks>
-internal sealed class UsbPresenceMonitor : IAsyncDisposable
+public sealed class UsbPresenceMonitor : IAsyncDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 

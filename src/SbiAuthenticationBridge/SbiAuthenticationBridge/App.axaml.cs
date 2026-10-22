@@ -3,21 +3,33 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.Configuration;
 using Prism.DryIoc;
 using Prism.Ioc;
+using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Services;
+using SbiAuthenticationBridge.ViewModels;
 using SbiAuthenticationBridge.Views;
 
 namespace SbiAuthenticationBridge;
 
 public class App : PrismApplication
 {
+    private IConfiguration? _configuration;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
 #if DEBUG
         this.AttachDeveloperTools();
 #endif
+        base.Initialize();
     }
+
+    /// <summary>
+    /// 平台配置
+    /// </summary>
+    public Action<IConfigurationBuilder>? AddPlatformConfiguration { get; set; }
 
     /// <summary>
     /// 平台注册
@@ -42,6 +54,19 @@ public class App : PrismApplication
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
+        #region 系统配置
+
+        var configurationBuilder = new ConfigurationBuilder();
+        AddPlatformConfiguration?.Invoke(configurationBuilder);
+        _configuration = configurationBuilder.Build();
+        containerRegistry.RegisterInstance(_configuration);
+
+        #endregion
+
+        containerRegistry.RegisterSingleton<IDeviceSelectionService, DeviceSelectionService>();
+        containerRegistry.RegisterInstance<ISbiHostContext>(new SbiHostContext("http://127.0.0.1:4501/"));
+        // containerRegistry.RegisterSingleton<DevicesViewModel>();
+
         PlatformRegistrations?.Invoke(containerRegistry);
     }
 

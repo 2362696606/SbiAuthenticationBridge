@@ -18,6 +18,7 @@
             <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
         </PackageReference>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration" />
         <PackageReference Include="Prism.DryIoc.Avalonia" />
         <PackageReference Include="Serilog" />
         <PackageReference Include="Serilog.Sinks.Async" />
@@ -27,5 +28,9 @@
 
     <ItemGroup>
       <Folder Include="Config\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj" />
     </ItemGroup>
 </Project>

@@ -2,12 +2,132 @@
     d:DesignHeight="450"
     d:DesignWidth="800"
     mc:Ignorable="d"
+    mvvm:ViewModelLocator.AutoWireViewModel="True"
     x:Class="SbiAuthenticationBridge.Views.DevicesView"
     x:DataType="viewModels:DevicesViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mvvm="http://prismlibrary.com/"
     xmlns:viewModels="clr-namespace:SbiAuthenticationBridge.ViewModels"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    设备枚举
+    <Grid Margin="16" RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="4">
+                <TextBlock
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Text="设备枚举" />
+                <TextBlock Opacity="0.65" Text="选择一台设备，其他设备操作视图将同步该选择。" />
+            </StackPanel>
+            <Button
+                Command="{Binding RefreshCommand}"
+                Content="刷新"
+                Grid.Column="1"
+                VerticalAlignment="Center" />
+        </Grid>
+
+        <Panel Grid.Row="1" Margin="0,12,0,0">
+            <ListBox
+                ItemsSource="{Binding Devices}"
+                SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                SelectionMode="Single">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="viewModels:DeviceItemViewModel">
+                        <Border
+                            BorderBrush="#33808080"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Margin="0,0,0,8"
+                            Padding="12">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock
+                                        FontSize="15"
+                                        FontWeight="SemiBold"
+                                        Text="{Binding DisplayName}" />
+                                    <Border
+                                        Background="#1A0078D4"
+                                        CornerRadius="3"
+                                        Padding="6,1">
+                                        <TextBlock FontSize="11" Text="{Binding KindText}" />
+                                    </Border>
+                                </StackPanel>
+
+                                <StackPanel
+                                    Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <Ellipse
+                                            Fill="{Binding StatusBrush}"
+                                            Height="8"
+                                            VerticalAlignment="Center"
+                                            Width="8" />
+                                        <TextBlock Foreground="{Binding StatusBrush}" Text="{Binding StatusText}" />
+                                    </StackPanel>
+                                    <TextBlock
+                                        IsVisible="{Binding HasConnectionState}"
+                                        Opacity="0.65"
+                                        Text="{Binding ConnectionText}" />
+                                </StackPanel>
+
+                                <WrapPanel
+                                    Grid.ColumnSpan="2"
+                                    Grid.Row="1"
+                                    Margin="0,8,0,0">
+                                    <TextBlock
+                                        Margin="0,0,16,0"
+                                        Opacity="0.8"
+                                        Text="{Binding DeviceIdText}" />
+                                    <TextBlock
+                                        Margin="0,0,16,0"
+                                        Opacity="0.8"
+                                        Text="{Binding DeviceCodeText}" />
+                                    <TextBlock
+                                        Margin="0,0,16,0"
+                                        Opacity="0.8"
+                                        Text="{Binding CertificationText}" />
+                                    <TextBlock
+                                        Margin="0,0,16,0"
+                                        Opacity="0.8"
+                                        Text="{Binding ServiceVersionText}" />
+                                    <TextBlock Opacity="0.8" Text="{Binding PurposeText}" />
+                                </WrapPanel>
+
+                                <TextBlock
+                                    Foreground="#C62828"
+                                    Grid.ColumnSpan="2"
+                                    Grid.Row="2"
+                                    IsVisible="{Binding HasError}"
+                                    Margin="0,6,0,0"
+                                    Text="{Binding ErrorInfo}"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <StackPanel
+                HorizontalAlignment="Center"
+                IsVisible="{Binding !HasDevices}"
+                Spacing="6"
+                VerticalAlignment="Center">
+                <TextBlock
+                    FontSize="16"
+                    HorizontalAlignment="Center"
+                    Text="未发现设备" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Opacity="0.65"
+                    Text="请检查设备连接后点击刷新。" />
+            </StackPanel>
+
+            <ProgressBar
+                IsIndeterminate="True"
+                IsVisible="{Binding IsRefreshing}"
+                VerticalAlignment="Top" />
+        </Panel>
+    </Grid>
 </UserControl>

@@ -99,9 +99,13 @@ public class FAP20 : IDevice
     /// </summary>
     /// <param name="vendorId">USB 厂商 ID，须与 FingerPrintDebug.INI 一致</param>
     /// <param name="productId">USB 产品 ID，须与 FingerPrintDebug.INI 一致</param>
-    public FAP20(ushort vendorId, ushort productId)
+    public FAP20(ushort vendorId, ushort productId) : this(new UsbPresenceMonitor(vendorId, productId))
     {
-        _presenceMonitor = new UsbPresenceMonitor(vendorId, productId);
+    }
+
+    public FAP20(UsbPresenceMonitor usbPresenceMonitor)
+    {
+        _presenceMonitor = usbPresenceMonitor;
         _presenceMonitor.PresenceChanged += OnPresenceChanged;
         _presenceMonitor.Start();
     }
