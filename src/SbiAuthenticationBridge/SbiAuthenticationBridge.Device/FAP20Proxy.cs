@@ -35,11 +35,6 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     private const string SbiSpecVersion = "0.9.5";
 
     /// <summary>
-    /// 默认回调地址，固件只回显不使用；实际部署时应设置为设备服务的真实地址
-    /// </summary>
-    private const string DefaultCallbackId = "http://127.0.0.1:4501/";
-
-    /// <summary>
     /// 采集请求未指定 timeout 时的默认等待时长
     /// </summary>
     private const int DefaultCaptureTimeoutMs = 30_000;
@@ -78,11 +73,6 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// deviceSubId 允许的最大值
     /// </summary>
     private const int MaxDeviceSubId = 3;
-
-    /// <summary>
-    /// 回调地址的最大长度，对应 DISCOVER/DEVICE_INFO 协议限制
-    /// </summary>
-    private const int MaxCallbackLength = 192;
 
     /// <summary>
     /// 设备 ID 的最大长度
@@ -143,7 +133,10 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
     private volatile bool _disposed;
 
-    private string _callbackId = DefaultCallbackId;
+    /// <summary>
+    /// 宿主上下文；回调标识在每次请求时读取，支持宿主运行时变更
+    /// </summary>
+    private readonly ISbiHostContext _hostContext;
 
     #endregion
 
@@ -151,17 +144,14 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// 创建 FAP20 的 SBI 适配器
     /// </summary>
     /// <param name="fap20">底层设备</param>
-    /// <param name="callbackId">设备服务回调地址；为空时使用本地默认地址</param>
-    public FAP20Proxy(FAP20 fap20, string? callbackId = null)
+    /// <param name="hostContext">宿主上下文，提供当前回调标识</param>
+    public FAP20Proxy(FAP20 fap20, ISbiHostContext hostContext)
     {
         ArgumentNullException.ThrowIfNull(fap20);
+        ArgumentNullException.ThrowIfNull(hostContext);
 
         _fap20 = fap20;
-
-        if (!string.IsNullOrWhiteSpace(callbackId))
-        {
-            CallbackId = callbackId;
-        }
+        _hostContext = hostContext;
     }
 
     #region IDevice
@@ -187,29 +177,6 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
     #region Properties
 
-    /// <summary>
-    /// 写入 DISCOVER/DEVICE_INFO 请求的回调地址
-    /// </summary>
-    /// <remarks>
-    /// 固件只回显该字段，不会主动回调；部署时应设置为设备服务的真实 HTTP 地址。
-    /// </remarks>
-    public string CallbackId
-    {
-        get => _callbackId;
-        set
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(value);
-
-            if (value.Length > MaxCallbackLength || value.Any(static c => c is < ' ' or > '~'))
-            {
-                throw new ArgumentException(
-                    $"回调地址须为 1..{MaxCallbackLength} 个可打印 ASCII 字符。", nameof(value));
-            }
-
-            _callbackId = value;
-        }
-    }
-
     /// <inheritdoc />
     public IDevice InnerDevice => _fap20;
 
@@ -231,7 +198,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         try
         {
             var deviceType = ResolveDeviceType(request.Type, out var invalidType);
-            var response = await _fap20.DiscoverAsync(CallbackId, deviceType,
+            var response = await _fap20.DiscoverAsync(_hostContext.CallbackId, deviceType,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             CacheIdentity(response.DeviceCode, response.DigitalId);
@@ -270,7 +237,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.GetDeviceInfoAsync(CallbackId,
+            var response = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             CacheIdentityFromDeviceInfo(response.DeviceInfo);
@@ -608,7 +575,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.DiscoverAsync(CallbackId,
+            var response = await _fap20.DiscoverAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             var status = ParseDeviceStatus(response.DeviceStatus);
@@ -792,7 +759,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.GetDeviceInfoAsync(CallbackId,
+            var response = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             CacheIdentityFromDeviceInfo(response.DeviceInfo);
         }

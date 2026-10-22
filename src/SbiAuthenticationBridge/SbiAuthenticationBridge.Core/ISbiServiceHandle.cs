@@ -21,6 +21,14 @@ namespace SbiAuthenticationBridge.Core;
 public interface ISbiServiceHandle
 {
     /// <summary>
+    /// 对外暴露的回调标识，与 <see cref="ISbiHostContext.CallbackId"/> 的当前值一致
+    /// </summary>
+    /// <remarks>
+    /// 宿主端口或平台回调形态变化后该值会随之变化；实现方不得缓存首次读取的结果。
+    /// </remarks>
+    string CallbackId { get; }
+
+    /// <summary>
     /// 设备发现（<c>/device</c>）
     /// </summary>
     /// <param name="request">发现请求，<see cref="DiscoveryRequest.Type"/> 用于筛选设备</param>
