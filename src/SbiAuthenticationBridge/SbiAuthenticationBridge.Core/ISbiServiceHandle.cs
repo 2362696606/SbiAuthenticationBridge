@@ -9,7 +9,7 @@ namespace SbiAuthenticationBridge.Core;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 与 <see cref="ISbiDeviceHandle"/> 的"单设备返回"不同，本接口面向的是对外暴露的 SBI 服务：
+/// 与 <see cref="ISbiDevice"/> 的"单设备返回"不同，本接口面向的是对外暴露的 SBI 服务：
 /// 实现方持有一个或多个设备句柄，负责把一次外部调用分发到这些设备，并合并各设备的响应。
 /// </para>
 /// <para>
@@ -30,7 +30,7 @@ public interface ISbiServiceHandle
     /// <see cref="DiscoveryResponse.Error"/> 的记录返回。
     /// </returns>
     /// <remarks>
-    /// 实现方应向每个已注册的设备句柄调用 <see cref="ISbiDeviceHandle.DiscoverAsync"/>，
+    /// 实现方应向每个已注册的设备句柄调用 <see cref="ISbiDevice.DiscoverAsync"/>，
     /// 过滤掉不应答的设备（类型不匹配或未返回结果），再将结果合并为列表。
     /// 返回顺序应保持稳定（例如按设备注册顺序），以便调用方对照。
     /// </remarks>
@@ -46,7 +46,7 @@ public interface ISbiServiceHandle
     /// <see cref="DeviceInfoResponse.Error"/> 的记录返回。
     /// </returns>
     /// <remarks>
-    /// 实现方应汇总每个设备句柄的 <see cref="ISbiDeviceHandle.GetDeviceInfoAsync"/> 结果。
+    /// 实现方应汇总每个设备句柄的 <see cref="ISbiDevice.GetDeviceInfoAsync"/> 结果。
     /// </remarks>
     Task<IReadOnlyList<DeviceInfoResponse>> GetDeviceInfoAsync(CancellationToken cancellationToken = default);
 }

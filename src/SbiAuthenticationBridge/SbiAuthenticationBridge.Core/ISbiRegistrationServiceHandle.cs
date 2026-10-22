@@ -8,15 +8,15 @@ namespace SbiAuthenticationBridge.Core;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 与 <see cref="IAuthenticationServiceHandle"/> 的区别在于：注册采集输出明文生物特征、不做加密，
-/// 且额外提供注册环境专用的预览流。实现方持有的设备句柄为 <see cref="IRegisterSbiDeviceHandle"/>。
+/// 与 <see cref="ISbiAuthenticationServiceHandle"/> 的区别在于：注册采集输出明文生物特征、不做加密，
+/// 且额外提供注册环境专用的预览流。实现方持有的设备句柄为 <see cref="ISbiRegistrationDevice"/>。
 /// </para>
 /// <para>
 /// 设备发现与设备信息复用 <see cref="ISbiServiceHandle"/>；注册采集与预览流按设备面的
-/// <see cref="IRegisterSbiDeviceHandle"/> 一一对应。
+/// <see cref="ISbiRegistrationDevice"/> 一一对应。
 /// </para>
 /// </remarks>
-public interface IRegisterSbiServiceHandle : ISbiServiceHandle
+public interface ISbiRegistrationServiceHandle : ISbiServiceHandle
 {
     /// <summary>
     /// 注册采集（<c>/rcapture</c>）
@@ -29,9 +29,9 @@ public interface IRegisterSbiServiceHandle : ISbiServiceHandle
     /// </returns>
     /// <remarks>
     /// <para>
-    /// 路由规则与合并规则同 <see cref="IAuthenticationServiceHandle.CaptureAsync"/>，但只使用注册类设备：
+    /// 路由规则与合并规则同 <see cref="ISbiAuthenticationServiceHandle.CaptureAsync"/>，但只使用注册类设备：
     /// 按 <see cref="BioInfo.DeviceId"/>（若提供）、<see cref="BioInfo.Type"/>、
-    /// <see cref="BioInfo.DeviceSubId"/> 把每个 bio 项分发到对应的 <see cref="IRegisterSbiDeviceHandle"/>。
+    /// <see cref="BioInfo.DeviceSubId"/> 把每个 bio 项分发到对应的 <see cref="ISbiRegistrationDevice"/>。
     /// </para>
     /// <para>
     /// 注册采集不加密，因此成功项不应携带 <see cref="BiometricInfo.SessionKey"/> 与
@@ -60,7 +60,7 @@ public interface IRegisterSbiServiceHandle : ISbiServiceHandle
     /// <remarks>
     /// <para>
     /// 仅用途为 Registration 的设备支持该操作。实现方应把请求路由到目标设备的
-    /// <see cref="IRegisterSbiDeviceHandle.StreamAsync"/>，并把设备返回的流原样交给调用方。
+    /// <see cref="ISbiRegistrationDevice.StreamAsync"/>，并把设备返回的流原样交给调用方。
     /// </para>
     /// <para>
     /// 与设备面一致，正常结果是视频流而不是 JSON。无法提供流时，实现方应抛出

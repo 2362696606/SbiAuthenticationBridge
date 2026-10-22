@@ -2,7 +2,7 @@ using SbiAuthenticationBridge.Core.Dto;
 
 namespace SbiAuthenticationBridge.Core;
 
-public interface ISbiDeviceHandle
+public interface ISbiDevice
 {
     /// <summary>
     /// 发现设备服务

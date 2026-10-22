@@ -18,14 +18,10 @@ public class FAP20 : IDevice
     private const int MaxCertificateLength = 3500;
 
     /// <summary>
-    /// LOAD_CERTIFICATE 成功响应的固定长度：安装长度 2 字节 + SHA-256 32 字节
-    /// </summary>
-    private const int LoadCertificateResponseLength = 34;
-
-    /// <summary>
     /// 原生接口不提供响应长度，使用足够大的缓冲区接收回执或错误信息
     /// </summary>
-    private const int ResponseBufferSize = 64 * 1024;
+    /// <remarks>与参考 SDK 的 <c>MAX_RESERVE_DATA_LEN</c>（204800）保持一致。</remarks>
+    private const int ResponseBufferSize = 204_800;
 
     /// <summary>
     /// 证书下发的默认超时：证书走慢速控制传输，默认 5 秒
@@ -45,7 +41,7 @@ public class FAP20 : IDevice
     /// <summary>
     /// 原生接口返回的设备忙/需复位状态码
     /// </summary>
-    private const int DeviceBusyResultCode = 0x75;
+    internal const int DeviceBusyResultCode = 0x75;
 
     /// <summary>
     /// 收到 0x75 后自动软复位的超时
@@ -297,18 +293,25 @@ public class FAP20 : IDevice
     #region Methods
 
     /// <summary>
-    /// 向设备加载域加密证书（LOAD_CERTIFICATE 0x11）
+    /// 向设备加载域加密证书（LOAD_CERTIFICATE）
     /// </summary>
     /// <remarks>
-    /// 证书以 DER 编码下发，设备安装后会回读安装长度与 SHA-256；只有两者都与请求一致才视为成功。
+    /// <para>
+    /// 请求为 37 字节头（版本/用途/格式/长度/SHA-256）+ DER，由
+    /// <see cref="FtmProtocolCodec.EncodeLoadCertificate"/> 生成。
+    /// </para>
+    /// <para>
+    /// 参考 SDK 的 <c>execCmd_ICT</c> 对 LOAD_CERTIFICATE 只下发数据并逐包读取 ACK，
+    /// 不返回额外的安装摘要；因此这里以原生返回 0 作为加载成功，摘要由本地计算。
     /// 证书保存在设备 RAM 中，设备断开或复位后需要重新加载。
+    /// </para>
     /// </remarks>
     /// <param name="certificateDer">DER 编码的 X.509 证书，长度为 1..3500 字节</param>
     /// <param name="timeoutMs">下发超时（毫秒）</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>设备回读的证书 SHA-256（大写十六进制）</returns>
+    /// <returns>本次下发证书的 SHA-256（大写十六进制）</returns>
     /// <exception cref="ArgumentException">证书为空或超过协议允许的最大长度</exception>
-    /// <exception cref="InvalidOperationException">设备未连接、下发失败或回读校验不一致</exception>
+    /// <exception cref="InvalidOperationException">设备未连接或下发失败</exception>
     public Task<string> LoadCertificateAsync(ReadOnlyMemory<byte> certificateDer,
         uint timeoutMs = DefaultCertificateTimeoutMs, CancellationToken cancellationToken = default)
     {
@@ -332,11 +335,13 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_load_certificate", request, timeoutMs,
+            ExecuteRequest("ftm_load_certificate", request, timeoutMs,
                 FtmNativeMethods.LoadCertificate);
 
-            return VerifyLoadCertificateResponse(
-                response.AsSpan(0, LoadCertificateResponseLength), der);
+            var fingerprint = Convert.ToHexString(SHA256.HashData(der));
+            Debug.WriteLine(
+                $"[FAP20] 证书已加载，{der.Length} 字节，SHA-256 {fingerprint}");
+            return fingerprint;
         }, cancellationToken);
     }
 
@@ -490,12 +495,16 @@ public class FAP20 : IDevice
     }
 
     /// <summary>
-    /// 下发 DKL 证书（SET_DKL1_CERTIFICATE 0x31）
+    /// 下发 DKL 证书（SET_DKL_CERTIFICATE）
     /// </summary>
+    /// <remarks>
+    /// 参考 SDK 的 <c>execCmd_ICT</c> 对 SET_DKL_CERTIFICATE 与 LOAD_CERTIFICATE 一样，
+    /// 只下发数据并逐包读取 ACK，不返回额外结果帧；原生返回 0 即表示设备已接受。
+    /// </remarks>
     /// <param name="certificateDer">DKL 证书 DER，1..3500 字节</param>
     /// <param name="timeoutMs">超时（毫秒）</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>设备结果码；除 Ok 外均表示本次操作未完成</returns>
+    /// <returns>设备接受时返回 <see cref="FtmDklResult.Ok"/></returns>
     public Task<FtmDklResult> SetDklCertificateAsync(ReadOnlyMemory<byte> certificateDer,
         uint timeoutMs = DefaultTimeoutMs,
         CancellationToken cancellationToken = default)
@@ -506,10 +515,10 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_set_dkl_certificate", request, timeoutMs,
+            ExecuteRequest("ftm_set_dkl_certificate", request, timeoutMs,
                 FtmNativeMethods.SetDklCertificate);
 
-            return FtmProtocolCodec.ParseDklResult(response);
+            return FtmDklResult.Ok;
         }, cancellationToken);
     }
 
@@ -723,7 +732,7 @@ public class FAP20 : IDevice
         var resetAttempted = result == DeviceBusyResultCode && ResetAfterDeviceBusy(operation);
         var resetMessage = resetAttempted ? "已尝试软复位，可重试。" : string.Empty;
 
-        throw new InvalidOperationException(
+        throw new FtmCommandException(operation, result,
             $"{operation} 失败，返回错误码 0x{result:X}（{result}）。{resetMessage}");
     }
 
@@ -753,35 +762,6 @@ public class FAP20 : IDevice
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// 校验设备回执中的安装长度与 SHA-256，返回设备回读的证书摘要
-    /// </summary>
-    private static string VerifyLoadCertificateResponse(ReadOnlySpan<byte> response, ReadOnlySpan<byte> der)
-    {
-        var installedLength = (response[0] << 8) | response[1];
-        if (installedLength == 0)
-        {
-            throw new InvalidOperationException("设备未返回证书安装回执，无法确认证书已加载。");
-        }
-
-        if (installedLength != der.Length)
-        {
-            throw new InvalidOperationException(
-                $"证书加载长度不一致：请求 {der.Length} 字节，设备回读 {installedLength} 字节。");
-        }
-
-        var returnedHash = response.Slice(2, 32);
-        var expectedHash = SHA256.HashData(der);
-        if (!returnedHash.SequenceEqual(expectedHash))
-        {
-            throw new InvalidOperationException(
-                $"证书加载校验失败：设备回读 SHA-256 {Convert.ToHexString(returnedHash)}，" +
-                $"期望 {Convert.ToHexString(expectedHash)}。");
-        }
-
-        return Convert.ToHexString(returnedHash);
     }
 
     #endregion

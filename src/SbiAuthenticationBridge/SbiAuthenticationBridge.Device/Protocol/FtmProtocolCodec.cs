@@ -23,8 +23,6 @@ internal static class FtmProtocolCodec
 
     private const int SpecSbi095 = 0;
 
-    private const int DeviceSubIdSingleFinger = 0;
-
     private const int MaxCertificateLength = 3500;
 
     private const int DklModulusLength = 256;
@@ -93,7 +91,8 @@ internal static class FtmProtocolCodec
     {
         ValidateRange((int)request.Environment, 0, 3, nameof(request.Environment));
         ValidateRange((int)request.FingerPosition, 0, 10, nameof(request.FingerPosition));
-        ValidateRange(request.BioCount, 0, 9, nameof(request.BioCount));
+        ValidateRange(request.BioCount, 0, 255, nameof(request.BioCount));
+        ValidateRange(request.DeviceSubId, 0, 3, nameof(request.DeviceSubId));
         ValidateRange(request.RequestedScore, 0, 100, nameof(request.RequestedScore));
         ValidateTransactionId(request.TransactionId);
         ValidateDeviceId(request.DeviceId);
@@ -129,7 +128,7 @@ internal static class FtmProtocolCodec
         payload[4] = (byte)request.BioCount;
         payload[5] = (byte)request.FingerPosition;
         payload[6] = (byte)request.RequestedScore;
-        payload[7] = DeviceSubIdSingleFinger;
+        payload[7] = (byte)request.DeviceSubId;
         payload[8] = (byte)domain.Length;
         payload[9] = (byte)transaction.Length;
         payload[10] = (byte)device.Length;
@@ -238,16 +237,6 @@ internal static class FtmProtocolCodec
                 SubjectPublicKeyInfo = BuildSubjectPublicKeyInfo(modulus)
             }
         };
-    }
-
-    internal static FtmDklResult ParseDklResult(ReadOnlySpan<byte> response)
-    {
-        if (response.Length < 2)
-        {
-            throw new FtmProtocolException("SET_DKL1_CERTIFICATE 响应不足 2 字节，读不到结果码。");
-        }
-
-        return ToDklResult(response[1], "SET_DKL1_CERTIFICATE");
     }
 
     internal static ReadOnlySpan<byte> TrimAtNul(ReadOnlySpan<byte> response)

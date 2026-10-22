@@ -26,8 +26,11 @@ public sealed record FtmCaptureRequest
     /// <summary>采集环境</summary>
     public FtmEnvironment Environment { get; init; } = FtmEnvironment.Staging;
 
-    /// <summary>本段采集次数，0..9</summary>
+    /// <summary>本段采集次数，0..255；超过 9 时由固件返回数量不匹配错误</summary>
     public int BioCount { get; init; } = 1;
+
+    /// <summary>设备子 ID，0..3；0 表示未指定</summary>
+    public int DeviceSubId { get; init; }
 
     /// <summary>期望质量分，0..100</summary>
     public int RequestedScore { get; init; } = DefaultRequestedScore;

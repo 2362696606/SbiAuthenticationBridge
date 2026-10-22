@@ -2,7 +2,10 @@ using SbiAuthenticationBridge.Core.Dto;
 
 namespace SbiAuthenticationBridge.Core;
 
-public interface IAuthenticationDeviceHandle : ISbiDeviceHandle
+/// <summary>
+/// 认证设备
+/// </summary>
+public interface ISbiAuthenticationDevice : ISbiDevice
 {
     /// <summary>
     /// 认证设备Capture
