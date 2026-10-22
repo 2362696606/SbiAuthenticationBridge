@@ -1,12 +1,15 @@
+using System;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using SbiAuthenticationBridge.ViewModels;
+using Prism.DryIoc;
+using Prism.Ioc;
 using SbiAuthenticationBridge.Views;
 
 namespace SbiAuthenticationBridge;
 
-public partial class App : Application
+public class App : PrismApplication
 {
     public override void Initialize()
     {
@@ -16,28 +19,52 @@ public partial class App : Application
 #endif
     }
 
+    /// <summary>
+    /// 平台注册
+    /// </summary>
+    public Action<IContainerRegistry>? PlatformRegistrations { get; set; }
+
+    /// <summary>
+    /// 窗体工厂方法
+    /// </summary>
+    public Func<AvaloniaObject>? ShellFactory { get; set; }
+
     public override void OnFrameworkInitializationCompleted()
     {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        if (ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
         {
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = new MainViewModel()
-            };
-        }
-        else if (ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
-        {
-            singleViewFactoryApplicationLifetime.MainViewFactory =
-                () => new MainView { DataContext = new MainViewModel() };
-        }
-        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
-        {
-            singleViewPlatform.MainView = new MainView
-            {
-                DataContext = new MainViewModel()
-            };
+            singleViewFactoryApplicationLifetime.MainViewFactory = () =>
+                MainWindow as Control ?? throw new InvalidOperationException("MainWindow is not set");
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    protected override void RegisterTypes(IContainerRegistry containerRegistry)
+    {
+        PlatformRegistrations?.Invoke(containerRegistry);
+    }
+
+    protected override AvaloniaObject CreateShell()
+    {
+        if (ShellFactory != null)
+            return ShellFactory();
+
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)
+        {
+            return Container.Resolve<MainWindow>();
+        }
+
+        if (ApplicationLifetime is ISingleViewApplicationLifetime)
+        {
+            return Container.Resolve<MainView>();
+        }
+
+        if (ApplicationLifetime is IActivityApplicationLifetime)
+        {
+            return Container.Resolve<MainView>();
+        }
+
+        throw new NotSupportedException();
     }
 }
