@@ -385,14 +385,42 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         var transactionId = request.TransactionId!;
         var timeoutMs = ResolveTimeout(request.Timeout);
         var captureTime = ResolveCaptureTime(request.CaptureTime);
-        var biometrics = new List<BiometricInfo>(bios.Count);
+        var biometrics = new List<BiometricInfo>();
+
+        // 上一个成功采集返回的 hash；下一根手指用它作为 previousHash，形成哈希链。
+        ReadOnlyMemory<byte>? chainHash = null;
 
         foreach (var bio in bios)
         {
-            var biometric = await CaptureLegacyOneAsync(transactionId, request.DomainUri, bio,
-                deviceCode, environment, captureTime, timeoutMs, cancellationToken)
-                .ConfigureAwait(false);
-            biometrics.Add(biometric);
+            var validationError = BuildLegacyCapturePlan(bio, out var fingerPositions,
+                out var requestedScore, out var requestPreviousHash);
+            if (validationError is not null)
+            {
+                biometrics.Add(new BiometricInfo { Error = validationError });
+                continue;
+            }
+
+            var perCaptureTimeout = ResolvePerCaptureTimeout(timeoutMs, fingerPositions.Count);
+
+            foreach (var fingerPosition in fingerPositions)
+            {
+                var previousHash = chainHash ?? requestPreviousHash;
+                var biometric = await CaptureLegacyOneAsync(transactionId, request.DomainUri,
+                    fingerPosition, requestedScore, previousHash, deviceCode, environment,
+                    captureTime, perCaptureTimeout, cancellationToken).ConfigureAwait(false);
+                biometrics.Add(biometric);
+
+                if (TryParseHash(biometric.Hash, out var nextHash))
+                {
+                    chainHash = nextHash;
+                }
+
+                if (biometric.Error is { } error && error.ErrorCode != "0")
+                {
+                    // 当前手指失败，没有可用的新 hash；不再继续后续手指
+                    break;
+                }
+            }
         }
 
         Logger.Information("认证采集完成，返回 {Count} 条结果", biometrics.Count);
@@ -400,19 +428,13 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
     }
 
     /// <summary>
-    /// 采集单个 bio 项（旧版协议）
+    /// 采集单个手指（旧版协议）
     /// </summary>
     private async Task<BiometricInfo> CaptureLegacyOneAsync(string transactionId, string? domainUri,
-        BioInfo bio, string deviceCode, FtmEnvironment environment, DateTimeOffset captureTime,
-        uint timeoutMs, CancellationToken cancellationToken)
+        FtmFingerPosition fingerPosition, int requestedScore,
+        ReadOnlyMemory<byte>? previousHash, string deviceCode, FtmEnvironment environment,
+        DateTimeOffset captureTime, uint timeoutMs, CancellationToken cancellationToken)
     {
-        var validationError = ValidateLegacyBio(bio, out var fingerPosition, out var requestedScore,
-            out var previousHash);
-        if (validationError is not null)
-        {
-            return new BiometricInfo { Error = validationError };
-        }
-
         var ftmRequest = new FtmCaptureRequest
         {
             TransactionId = transactionId,
@@ -459,12 +481,17 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
     }
 
     /// <summary>
-    /// 校验并转换单个 bio 项的采集参数（旧版协议）
+    /// 校验 bio 项并展开为逐指采集计划（旧版协议）
     /// </summary>
-    private static SbiError? ValidateLegacyBio(BioInfo bio, out FtmFingerPosition fingerPosition,
-        out int requestedScore, out ReadOnlyMemory<byte>? previousHash)
+    /// <remarks>
+    /// SBI1019 会发送 <c>count=2</c> 和两个 <c>UNKNOWN</c>；设备一次只能采一根手指，
+    /// 因此这里把一项请求展开成 N 次采集，由调用方依次执行。
+    /// </remarks>
+    private static SbiError? BuildLegacyCapturePlan(BioInfo bio,
+        out IReadOnlyList<FtmFingerPosition> fingerPositions, out int requestedScore,
+        out ReadOnlyMemory<byte>? previousHash)
     {
-        fingerPosition = FtmFingerPosition.Unknown;
+        fingerPositions = Array.Empty<FtmFingerPosition>();
         requestedScore = FtmCaptureRequest.DefaultRequestedScore;
         previousHash = null;
 
@@ -475,36 +502,45 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         }
 
         var subTypes = bio.BioSubType;
-        if (subTypes is { Count: > 1 })
-        {
-            return SbiErrorHelper.RequestedBiometricCountNotSupported;
-        }
-
         var count = bio.Count ?? subTypes?.Count ?? 1;
-        if (count != 1)
+        if (count is < 1 or > 10)
         {
             return SbiErrorHelper.RequestedBiometricCountNotSupported;
         }
 
-        if (subTypes is { Count: 1 })
+        if (subTypes is { Count: > 0 } && subTypes.Count != count && subTypes.Count != 1)
         {
-            var name = subTypes[0];
+            return SbiErrorHelper.RequestedBiometricCountNotSupported;
+        }
+
+        var positions = new List<FtmFingerPosition>(count);
+        for (var index = 0; index < count; index++)
+        {
+            // 只给了一个 subtype 时，按同一个部位重复采集
+            var name = subTypes is { Count: > 0 }
+                ? subTypes[Math.Min(index, subTypes.Count - 1)]
+                : "UNKNOWN";
+
             if (string.IsNullOrWhiteSpace(name))
             {
                 return SbiErrorHelper.TechnicalErrorDuringExtraction;
             }
 
             var normalized = name.Replace(" ", string.Empty, StringComparison.Ordinal);
-            if (!FingerPositions.TryGetValue(normalized, out fingerPosition))
+            if (!FingerPositions.TryGetValue(normalized, out var position))
             {
                 if (!string.Equals(normalized, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
                 {
                     return SbiErrorHelper.TechnicalErrorDuringExtraction;
                 }
 
-                fingerPosition = FtmFingerPosition.Unknown;
+                position = FtmFingerPosition.Unknown;
             }
+
+            positions.Add(position);
         }
+
+        fingerPositions = positions;
 
         if (bio.RequestedScore is { } score)
         {
@@ -536,6 +572,42 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// 多指采集时把请求超时均分到每根手指，避免总耗时超过调用方超时
+    /// </summary>
+    private static uint ResolvePerCaptureTimeout(uint timeoutMs, int count)
+    {
+        if (count <= 1)
+        {
+            return timeoutMs;
+        }
+
+        return Math.Max(timeoutMs / (uint)count, 1_000);
+    }
+
+    /// <summary>
+    /// 把设备返回的 64 位十六进制 hash 转成下一指的 previousHash
+    /// </summary>
+    private static bool TryParseHash(string? hash, out ReadOnlyMemory<byte>? bytes)
+    {
+        bytes = null;
+
+        if (string.IsNullOrEmpty(hash) || hash.Length != 64)
+        {
+            return false;
+        }
+
+        try
+        {
+            bytes = Convert.FromHexString(hash);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
