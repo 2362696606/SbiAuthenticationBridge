@@ -169,7 +169,7 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         var validationError = ValidateFcg3M115Bio(bio, out var bioSubType);
         if (validationError is not null)
         {
-            return new BiometricInfo { Error = validationError };
+            return CreateBiometricError(validationError);
         }
 
         try
@@ -198,17 +198,14 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         catch (Fcg3M115Exception exception)
         {
             Logger.Error(exception, "FCG-3M115 响应校验失败");
-            return new BiometricInfo { Error = TechnicalError(exception) };
+            return CreateBiometricError(TechnicalError(exception));
         }
         catch (Exception exception)
         {
             Logger.Error(exception, "认证采集失败");
-            return new BiometricInfo
-            {
-                Error = Device.IsConnected
-                    ? TechnicalError(exception)
-                    : SbiErrorHelper.DeviceNotReady
-            };
+            return CreateBiometricError(Device.IsConnected
+                ? TechnicalError(exception)
+                : SbiErrorHelper.DeviceNotReady);
         }
     }
 
@@ -396,7 +393,7 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
                 out var requestedScore, out var requestPreviousHash);
             if (validationError is not null)
             {
-                biometrics.Add(new BiometricInfo { Error = validationError });
+                biometrics.Add(CreateBiometricError(validationError));
                 continue;
             }
 
@@ -466,17 +463,14 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
         catch (FtmCommandException exception) when (exception.ResultCode == FAP20.DeviceBusyResultCode)
         {
             Logger.Warning(exception, "认证采集设备忙");
-            return new BiometricInfo { Error = SbiErrorHelper.DeviceBusy };
+            return CreateBiometricError(SbiErrorHelper.DeviceBusy);
         }
         catch (Exception exception)
         {
             Logger.Error(exception, "认证采集失败");
-            return new BiometricInfo
-            {
-                Error = Device.IsConnected
-                    ? SbiErrorHelper.TechnicalErrorDuringExtraction
-                    : SbiErrorHelper.DeviceNotReady
-            };
+            return CreateBiometricError(Device.IsConnected
+                ? SbiErrorHelper.TechnicalErrorDuringExtraction
+                : SbiErrorHelper.DeviceNotReady);
         }
     }
 
@@ -747,6 +741,11 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
     {
         biometric.SpecVersion ??= DefaultSpecVersion;
 
+        // 错误响应同样要求 specVersion/data/hash 字段存在；CTK 的
+        // BioCountMismatchCaptureResponseSchema 会校验这三个必填字段。
+        biometric.Data ??= string.Empty;
+        biometric.Hash ??= string.Empty;
+
         if (string.IsNullOrEmpty(biometric.Data))
         {
             if (biometric.Error is null
@@ -772,7 +771,13 @@ public sealed class Fap20AuthenticationDevice : Fap20SbiDevice, IAuthenticationD
     /// <summary>
     /// 构造一条生物特征错误记录
     /// </summary>
-    private static BiometricInfo CreateBiometricError(SbiError error) => new() { Error = error };
+    private static BiometricInfo CreateBiometricError(SbiError error) => new()
+    {
+        SpecVersion = DefaultSpecVersion,
+        Data = string.Empty,
+        Hash = string.Empty,
+        Error = error
+    };
 
     /// <summary>
     /// 按名称大小写不敏感地读取 JSON 属性
