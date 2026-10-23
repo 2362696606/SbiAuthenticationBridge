@@ -18,16 +18,16 @@
             <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
         </PackageReference>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
+        <PackageReference Include="DryIoc.Microsoft.DependencyInjection" />
         <PackageReference Include="Microsoft.Extensions.Configuration" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+        <PackageReference Include="NetEscapades.Configuration.Yaml" />
         <PackageReference Include="Prism.DryIoc.Avalonia" />
+        <PackageReference Include="YamlDotNet" />
         <PackageReference Include="Serilog" />
         <PackageReference Include="Serilog.Sinks.Async" />
         <PackageReference Include="Serilog.Sinks.Console" />
         <PackageReference Include="Serilog.Sinks.File" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Config\" />
     </ItemGroup>
 
     <ItemGroup>

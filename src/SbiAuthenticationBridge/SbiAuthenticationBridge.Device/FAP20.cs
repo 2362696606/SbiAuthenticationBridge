@@ -835,13 +835,24 @@ public class FAP20 : IDevice
     }
 
     /// <summary>
-    /// 统一处理原生命令返回码：0x75 时尝试一次软复位，当前命令仍按失败处理
+    /// 统一处理原生命令返回码：0x75 时尝试一次软复位，当前命令仍按失败处理；
+    /// 负数表示 USB 传输层失败，会话已不可信，直接释放句柄
     /// </summary>
+    /// <remarks>调用方需持有 <see cref="_syncRoot"/>。</remarks>
     private void ThrowIfFailed(int result, string operation)
     {
         if (result == 0)
         {
             return;
+        }
+
+        // 负数是 libusb/端口层的错误，设备可能已经重新枚举或传输通道失效，
+        // 句柄不能再复用；关闭后 IsConnected 会返回 false，界面可如实显示为断开
+        if (result < 0)
+        {
+            CloseDevice();
+            throw new FtmCommandException(operation, result,
+                $"{operation} 失败，返回错误码 0x{result:X}（{result}），USB 传输异常，设备已断开。");
         }
 
         var resetAttempted = result == DeviceBusyResultCode && ResetAfterDeviceBusy(operation);

@@ -19,10 +19,18 @@
 
     <ItemGroup>
         <PackageReference Include="Avalonia.Android"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration" />
+        <PackageReference Include="NetEscapades.Configuration.Yaml" />
         <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\SbiAuthenticationBridge\SbiAuthenticationBridge.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="Config\AppSetting.yaml">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 </Project>

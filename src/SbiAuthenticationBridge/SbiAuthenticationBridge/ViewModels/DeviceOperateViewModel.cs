@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Options;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Dto.Enum;
 using SbiAuthenticationBridge.Core.Security;
@@ -15,9 +19,26 @@ namespace SbiAuthenticationBridge.ViewModels;
 /// </summary>
 public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>
+    /// 设备可接受的证书 DER 最大长度
+    /// </summary>
+    private const int MaxCertificateLength = 3500;
+
+    /// <summary>
+    /// 叶证书有效期
+    /// </summary>
+    private static readonly TimeSpan CertificateLifetime = TimeSpan.FromDays(90);
+
+    /// <summary>
+    /// 时钟容错，向前多给 5 分钟
+    /// </summary>
+    private static readonly TimeSpan ClockSkew = TimeSpan.FromMinutes(5);
+
     private readonly IDeviceSelectionService _selectionService;
 
-    private readonly IDkl1CertificateIssuer _certificateIssuer;
+    private readonly ICertificateProvider _certificateProvider;
+
+    private readonly Dkl1IssuerOptions _dkl1Options;
 
     /// <summary>
     /// 构造期间不触发选择变化处理
@@ -28,18 +49,24 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// 创建设备操作视图模型
     /// </summary>
     /// <param name="selectionService">全局设备选择服务</param>
-    /// <param name="certificateIssuer">DKL1 叶证书签发器</param>
+    /// <param name="certificateProvider">证书材料提供者</param>
+    /// <param name="dkl1Options">DKL1 叶证书 Subject 与输出配置</param>
     public DeviceOperateViewModel(
         IDeviceSelectionService selectionService,
-        IDkl1CertificateIssuer certificateIssuer)
+        ICertificateProvider certificateProvider,
+        IOptions<Dkl1IssuerOptions> dkl1Options)
     {
         ArgumentNullException.ThrowIfNull(selectionService);
-        ArgumentNullException.ThrowIfNull(certificateIssuer);
+        ArgumentNullException.ThrowIfNull(certificateProvider);
+        ArgumentNullException.ThrowIfNull(dkl1Options);
 
         _selectionService = selectionService;
-        _certificateIssuer = certificateIssuer;
-        KeySubjectDescription = certificateIssuer.SubjectDescription;
-        IsKeyRotationConfigured = certificateIssuer.IsConfigured;
+        _certificateProvider = certificateProvider;
+        _dkl1Options = dkl1Options.Value;
+        IsKeyRotationConfigured = IsDkl1Configured(_dkl1Options);
+        KeySubjectDescription = IsKeyRotationConfigured
+            ? DescribeSubject(_dkl1Options)
+            : "DKL1 签发材料未配置。";
 
         SelectedDevice = selectionService.SelectedDevice;
         SelectedDeviceId = selectionService.DeviceId;
@@ -227,6 +254,8 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        var deviceId = SelectedDeviceId;
+
         IsBusy = true;
         ErrorMessage = null;
 
@@ -241,6 +270,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         finally
         {
             IsBusy = false;
+            SynchronizeConnectionState(deviceId);
         }
     }
 
@@ -275,6 +305,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         finally
         {
             IsBusy = false;
+            SynchronizeConnectionState(selectedDeviceId);
         }
     }
 
@@ -308,6 +339,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         finally
         {
             IsBusy = false;
+            SynchronizeConnectionState(selectedDeviceId);
         }
     }
 
@@ -341,6 +373,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         finally
         {
             IsBusy = false;
+            SynchronizeConnectionState(selectedDeviceId);
         }
     }
 
@@ -352,13 +385,15 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        var selectedDeviceId = SelectedDeviceId;
+
         IsBusy = true;
         ErrorMessage = null;
 
         try
         {
             var publicKey = await secureDevice.GetDkl1PublicKeyAsync();
-            var certificateDer = _certificateIssuer.Issue(publicKey.SubjectPublicKeyInfo);
+            var certificateDer = CreateDkl1Certificate(publicKey.SubjectPublicKeyInfo);
             await secureDevice.SetDkl1CertificateAsync(certificateDer);
         }
         catch (Exception exception)
@@ -368,6 +403,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         finally
         {
             IsBusy = false;
+            SynchronizeConnectionState(selectedDeviceId);
         }
     }
 
@@ -394,6 +430,24 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// </summary>
     private bool IsDeviceUsable =>
         SelectedDevice is not IDevice physicalDevice || physicalDevice.IsConnected;
+
+    /// <summary>
+    /// 操作结束后按设备实际状态刷新连接显示，避免失败后界面仍停留在“已连接”
+    /// </summary>
+    /// <param name="deviceId">本次操作开始时的设备内部标识</param>
+    private void SynchronizeConnectionState(string? deviceId)
+    {
+        if (!IsStillSelected(deviceId) || SelectedDevice is not IDevice physicalDevice)
+        {
+            return;
+        }
+
+        IsConnected = physicalDevice.IsConnected;
+        if (!IsConnected)
+        {
+            CurrentStatus = DeviceStatus.NotReady;
+        }
+    }
 
     private async Task LoadDeviceStateAsync(ISbiDevice device)
     {
@@ -426,6 +480,108 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// 使用 Device Provider 私钥为设备公钥签发 DKL1 叶证书
+    /// </summary>
+    private ReadOnlyMemory<byte> CreateDkl1Certificate(ReadOnlyMemory<byte> subjectPublicKeyInfo)
+    {
+        if (subjectPublicKeyInfo.IsEmpty)
+        {
+            throw new ArgumentException("设备公钥不能为空。", nameof(subjectPublicKeyInfo));
+        }
+
+        using var deviceKey = ImportDeviceKey(subjectPublicKeyInfo.Span);
+
+        var notBefore = DateTimeOffset.UtcNow - ClockSkew;
+        using var certificate = CertificateSigner.Sign(
+            _certificateProvider.ProviderCertificate,
+            _certificateProvider.ProviderPrivateKey,
+            deviceKey,
+            CreateSubjectName(),
+            notBefore,
+            notBefore + CertificateLifetime);
+
+        var certificateDer = certificate.Export(X509ContentType.Cert);
+        if (certificateDer.Length > MaxCertificateLength)
+        {
+            throw new InvalidOperationException(
+                $"签发结果 {certificateDer.Length} 字节，超过设备允许的 {MaxCertificateLength} 字节。");
+        }
+
+        SaveIssuedCertificate(certificateDer);
+        return certificateDer;
+    }
+
+    private X500DistinguishedName CreateSubjectName()
+    {
+        var subject = new X500DistinguishedNameBuilder();
+        subject.AddCountryOrRegion("CN");
+        subject.AddStateOrProvinceName("Guangdong");
+        subject.AddLocalityName("Shenzhen");
+        subject.AddOrganizationName(_dkl1Options.DeviceProvider);
+        subject.AddOrganizationalUnitName($"{_dkl1Options.Make}-{_dkl1Options.Model}");
+        subject.AddCommonName(_dkl1Options.SerialNo);
+        return subject.Build();
+    }
+
+    /// <summary>
+    /// 导入设备返回的 SubjectPublicKeyInfo，并校验 DKL1 要求的 RSA-2048
+    /// </summary>
+    private static RSA ImportDeviceKey(ReadOnlySpan<byte> subjectPublicKeyInfo)
+    {
+        var rsa = RSA.Create();
+
+        try
+        {
+            rsa.ImportSubjectPublicKeyInfo(subjectPublicKeyInfo, out var bytesRead);
+            if (bytesRead != subjectPublicKeyInfo.Length)
+            {
+                throw new InvalidOperationException("设备公钥包含多余的尾部数据。");
+            }
+        }
+        catch (Exception exception) when (exception is CryptographicException or InvalidOperationException)
+        {
+            rsa.Dispose();
+            throw new InvalidOperationException("设备返回的 DKL1 公钥格式无效。", exception);
+        }
+
+        if (rsa.KeySize != 2048)
+        {
+            rsa.Dispose();
+            throw new InvalidOperationException(
+                $"设备 DKL1 公钥应为 RSA-2048，实际为 {rsa.KeySize} 位。");
+        }
+
+        return rsa;
+    }
+
+    private void SaveIssuedCertificate(byte[] certificateDer)
+    {
+        if (string.IsNullOrWhiteSpace(_dkl1Options.IssuedCertificatePath))
+        {
+            return;
+        }
+
+        var outputPath = ResolvePath(_dkl1Options.IssuedCertificatePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        File.WriteAllBytes(outputPath, certificateDer);
+    }
+
+    private static bool IsDkl1Configured(Dkl1IssuerOptions options) =>
+        !string.IsNullOrWhiteSpace(options.SerialNo)
+        && !string.IsNullOrWhiteSpace(options.Make)
+        && !string.IsNullOrWhiteSpace(options.Model)
+        && !string.IsNullOrWhiteSpace(options.DeviceProvider);
+
+    private static string DescribeSubject(Dkl1IssuerOptions options) =>
+        $"C=CN, ST=Guangdong, L=Shenzhen, O={options.DeviceProvider}, " +
+        $"OU={options.Make}-{options.Model}, CN={options.SerialNo}";
+
+    private static string ResolvePath(string path) =>
+        Path.IsPathRooted(path)
+            ? path
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
 
     private void NotifyCommandStates()
     {

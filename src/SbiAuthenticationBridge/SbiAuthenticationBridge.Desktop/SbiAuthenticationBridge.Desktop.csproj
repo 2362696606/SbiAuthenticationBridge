@@ -15,7 +15,7 @@
     <ItemGroup>
         <PackageReference Include="Avalonia.Desktop"/>
         <PackageReference Include="Microsoft.Extensions.Configuration.Ini" />
-        <PackageReference Include="YamlDotNet" />
+        <PackageReference Include="NetEscapades.Configuration.Yaml" />
     </ItemGroup>
 
     <ItemGroup>
@@ -24,7 +24,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="dkl1.example.yaml" CopyToOutputDirectory="PreserveNewest" />
-        <None Update="dkl1.yaml" CopyToOutputDirectory="PreserveNewest" Condition="Exists('dkl1.yaml')" />
+      <None Update="Config\AppSetting.yaml">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 </Project>

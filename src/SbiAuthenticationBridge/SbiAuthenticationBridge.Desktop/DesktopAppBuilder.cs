@@ -21,11 +21,11 @@ public class DesktopAppBuilder
     private static void RegisterTypes(IContainerRegistry containerRegistry)
     {
         containerRegistry.RegisterSingleton<ISbiDeviceProvider, FAP20DeviceProvider>();
-        containerRegistry.RegisterInstance(Dkl1IssuerFactory.Create());
     }
 
     private static void ConfigConfiguration(IConfigurationBuilder builder)
     {
         builder.AddIniFile("./FingerPrintDebug.INI", optional: false, reloadOnChange: false);
+        builder.AddYamlFile("./Config/AppSetting.yaml", optional: false, reloadOnChange: false);
     }
 }
