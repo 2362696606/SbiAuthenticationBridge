@@ -15,6 +15,8 @@ namespace SbiAuthenticationBridge.ViewModels;
 /// </summary>
 public partial class DevicesViewModel : ViewModelBase, IDisposable
 {
+    #region Fileds
+
     private readonly ISbiDeviceProvider _deviceProvider;
     private readonly IDeviceSelectionService _selectionService;
 
@@ -22,6 +24,10 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
     /// 防止视图模型与服务之间的选择同步互相触发
     /// </summary>
     private bool _syncingSelection;
+
+    #endregion
+
+    #region Ctor
 
     /// <summary>
     /// 创建设备枚举视图模型
@@ -38,10 +44,9 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
         _selectionService.SelectionChanged += OnGlobalSelectionChanged;
     }
 
-    /// <summary>
-    /// 可枚举的设备
-    /// </summary>
-    public ObservableCollection<DeviceItemViewModel> Devices { get; } = [];
+    #endregion
+
+    #region Observable Properties
 
     /// <summary>
     /// 当前选择的设备
@@ -55,22 +60,28 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsRefreshing { get; set; }
 
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    /// 可枚举的设备
+    /// </summary>
+    public ObservableCollection<DeviceItemViewModel> Devices { get; } = [];
+
     /// <summary>
     /// 是否存在可枚举的设备
     /// </summary>
     public bool HasDevices => Devices.Count > 0;
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        _selectionService.SelectionChanged -= OnGlobalSelectionChanged;
-        GC.SuppressFinalize(this);
-    }
+    #endregion
+
+    #region Commands
 
     /// <summary>
     /// 重新枚举设备并刷新各设备的基础信息与状态
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task RefreshAsync(CancellationToken cancellationToken)
     {
         IsRefreshing = true;
@@ -94,6 +105,24 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
         }
     }
 
+    #endregion
+
+    #region Observable Properties Changed
+
+    partial void OnSelectedDeviceChanged(DeviceItemViewModel? value)
+    {
+        if (_syncingSelection)
+        {
+            return;
+        }
+
+        _selectionService.Select(value?.InnerDeviceId, value?.Device);
+    }
+
+    #endregion
+
+    #region Methods
+
     /// <summary>
     /// 让列表与设备提供者保持一致，尽量复用已有列表项以免打断选择
     /// </summary>
@@ -103,20 +132,24 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
 
         for (var index = Devices.Count - 1; index >= 0; index--)
         {
-            if (!providedDevices.Any(device => ReferenceEquals(device, Devices[index].Device)))
+            if (!providedDevices.ContainsKey(Devices[index].InnerDeviceId))
             {
                 Devices.RemoveAt(index);
             }
         }
 
-        foreach (var device in providedDevices)
+        var existingIds = Devices
+            .Select(item => item.InnerDeviceId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var (key, device) in providedDevices)
         {
-            if (Devices.Any(item => ReferenceEquals(item.Device, device)))
+            if (!existingIds.Add(key))
             {
                 continue;
             }
 
-            Devices.Add(new DeviceItemViewModel(device, Devices.Count + 1));
+            Devices.Add(new DeviceItemViewModel(key, device, Devices.Count + 1));
         }
     }
 
@@ -125,8 +158,7 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void RestoreSelection()
     {
-        var selectedItem = Devices.FirstOrDefault(item =>
-            ReferenceEquals(item.Device, _selectionService.SelectedDevice));
+        var selectedItem = FindDeviceItem(_selectionService.DeviceId);
 
         if (ReferenceEquals(SelectedDevice, selectedItem))
         {
@@ -144,25 +176,26 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
             _syncingSelection = false;
         }
 
-        if (selectedItem is null && _selectionService.SelectedDevice is not null)
+        if (selectedItem is null && _selectionService.DeviceId is not null)
         {
-            _selectionService.Select(null);
+            _selectionService.Select(null, null);
         }
     }
 
-    partial void OnSelectedDeviceChanged(DeviceItemViewModel? value)
+    /// <summary>
+    /// 按内部标识查找列表项；设备身份不依赖实例引用
+    /// </summary>
+    private DeviceItemViewModel? FindDeviceItem(string? innerDeviceId)
     {
-        if (_syncingSelection)
-        {
-            return;
-        }
-
-        _selectionService.Select(value?.Device);
+        return string.IsNullOrEmpty(innerDeviceId)
+            ? null
+            : Devices.FirstOrDefault(item =>
+                string.Equals(item.InnerDeviceId, innerDeviceId, StringComparison.Ordinal));
     }
 
     private void OnGlobalSelectionChanged(object? sender, DeviceSelectionChangedEventArgs e)
     {
-        if (ReferenceEquals(SelectedDevice?.Device, e.SelectedDevice))
+        if (string.Equals(SelectedDevice?.InnerDeviceId, e.SelectedDeviceId, StringComparison.Ordinal))
         {
             return;
         }
@@ -171,12 +204,24 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
 
         try
         {
-            SelectedDevice = Devices.FirstOrDefault(item =>
-                ReferenceEquals(item.Device, e.SelectedDevice));
+            SelectedDevice = FindDeviceItem(e.SelectedDeviceId);
         }
         finally
         {
             _syncingSelection = false;
         }
     }
+
+    #endregion
+
+    #region Dispose
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _selectionService.SelectionChanged -= OnGlobalSelectionChanged;
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
 }

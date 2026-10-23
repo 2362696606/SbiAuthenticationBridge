@@ -1,8 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using SbiAuthenticationBridge.Core.Dto;
 
 namespace SbiAuthenticationBridge.Device.Protocol;
 
@@ -156,39 +154,6 @@ internal static class FtmProtocolCodec
         }
 
         return der.ToArray();
-    }
-
-    internal static DiscoveryResponse ParseDiscoverResponse(ReadOnlySpan<byte> response)
-    {
-        using var document = ParseJsonDocument(response, "DISCOVER");
-        var root = RootObject(document, "DISCOVER");
-
-        return new DiscoveryResponse
-        {
-            DeviceId = ReadString(root, "deviceId"),
-            DeviceStatus = ReadVerbatim(root, "deviceStatus"),
-            Certification = ReadString(root, "certification"),
-            ServiceVersion = ReadString(root, "serviceVersion"),
-            DeviceSubId = ReadIntArray(root, "deviceSubId"),
-            CallbackId = ReadString(root, "callbackId"),
-            DigitalId = ReadString(root, "digitalId"),
-            DeviceCode = ReadString(root, "deviceCode"),
-            SpecVersion = ReadStringArray(root, "specVersion"),
-            Purpose = ReadVerbatim(root, "purpose"),
-            Error = ReadError(root)
-        };
-    }
-
-    internal static DeviceInfoResponse ParseDeviceInfoResponse(ReadOnlySpan<byte> response)
-    {
-        using var document = ParseJsonDocument(response, "DEVICE_INFO");
-        var root = RootObject(document, "DEVICE_INFO");
-
-        return new DeviceInfoResponse
-        {
-            DeviceInfo = ReadString(root, "deviceInfo"),
-            Error = ReadError(root)
-        };
     }
 
     internal static string ReadResponseText(ReadOnlySpan<byte> response) =>
@@ -371,132 +336,4 @@ internal static class FtmProtocolCodec
         }
     }
 
-    private static JsonDocument ParseJsonDocument(ReadOnlySpan<byte> response, string what)
-    {
-        var json = Encoding.UTF8.GetString(TrimAtNul(response));
-
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            throw new FtmProtocolException($"{what} 内容为空，没有可解析的 JSON。");
-        }
-
-        try
-        {
-            return JsonDocument.Parse(json);
-        }
-        catch (JsonException exception)
-        {
-            throw new FtmProtocolException(
-                $"{what} 内容不是合法 JSON：{exception.Message}；前 200 字符：\"{Truncate(json)}\"。");
-        }
-    }
-
-    private static JsonElement RootObject(JsonDocument document, string operation)
-    {
-        var root = document.RootElement;
-
-        if (root.ValueKind == JsonValueKind.Array)
-        {
-            if (root.GetArrayLength() == 0)
-            {
-                throw new FtmProtocolException($"{operation} 响应是空数组，没有设备对象。");
-            }
-
-            root = root[0];
-        }
-
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            throw new FtmProtocolException(
-                $"{operation} 响应的主体不是 JSON 对象（实际为 {root.ValueKind}）。");
-        }
-
-        return root;
-    }
-
-    private static string? ReadString(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static string? ReadVerbatim(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value)
-            ? value.ValueKind switch
-            {
-                JsonValueKind.String => value.GetString(),
-                JsonValueKind.Number => value.GetRawText(),
-                _ => null
-            }
-            : null;
-
-    private static IReadOnlyList<int>? ReadIntArray(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value))
-        {
-            return null;
-        }
-
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var single))
-        {
-            return [single];
-        }
-
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        var items = new List<int>(value.GetArrayLength());
-        foreach (var item in value.EnumerateArray())
-        {
-            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number))
-            {
-                items.Add(number);
-            }
-        }
-
-        return items;
-    }
-
-    private static IReadOnlyList<string>? ReadStringArray(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value))
-        {
-            return null;
-        }
-
-        if (value.ValueKind == JsonValueKind.String)
-        {
-            return [value.GetString() ?? ""];
-        }
-
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        var items = new List<string>(value.GetArrayLength());
-        foreach (var item in value.EnumerateArray())
-        {
-            items.Add(item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : item.GetRawText());
-        }
-
-        return items;
-    }
-
-    private static SbiError ReadError(JsonElement element)
-    {
-        if (!element.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
-        {
-            return new SbiError { ErrorCode = "0", ErrorInfo = "Success" };
-        }
-
-        return new SbiError
-        {
-            ErrorCode = ReadVerbatim(error, "errorCode"),
-            ErrorInfo = ReadString(error, "errorInfo")
-        };
-    }
-
-    private static string Truncate(string text) => text.Length <= 200 ? text : text[..200] + "...";
 }

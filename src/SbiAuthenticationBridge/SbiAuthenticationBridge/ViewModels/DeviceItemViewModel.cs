@@ -33,12 +33,15 @@ public partial class DeviceItemViewModel : ViewModelBase
     /// <summary>
     /// 创建设备列表项
     /// </summary>
+    /// <param name="innerDeviceId">设备内部标识ID</param>
     /// <param name="device">底层设备</param>
     /// <param name="ordinal">在列表中的序号，用于标识尚未返回信息的设备</param>
-    public DeviceItemViewModel(ISbiDevice device, int ordinal)
+    public DeviceItemViewModel(string innerDeviceId, ISbiDevice device, int ordinal)
     {
+        ArgumentException.ThrowIfNullOrEmpty(innerDeviceId);
         ArgumentNullException.ThrowIfNull(device);
 
+        InnerDeviceId = innerDeviceId;
         Device = device;
         _fallbackName = $"{KindText} {ordinal}";
         DisplayName = _fallbackName;
@@ -48,6 +51,11 @@ public partial class DeviceItemViewModel : ViewModelBase
             IsConnected = physicalDevice.IsConnected;
         }
     }
+
+    /// <summary>
+    /// 设备提供者分配的内部唯一标识，仅用于区分设备，不影响业务流程
+    /// </summary>
+    public string InnerDeviceId { get; }
 
     /// <summary>
     /// 底层设备
@@ -71,11 +79,11 @@ public partial class DeviceItemViewModel : ViewModelBase
     public partial string DisplayName { get; set; }
 
     /// <summary>
-    /// 设备服务内部的设备 ID
+    /// 设备服务上报的设备 ID
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DeviceIdText))]
-    public partial string? DeviceId { get; set; }
+    [NotifyPropertyChangedFor(nameof(ServiceDeviceIdText))]
+    public partial string? ServiceDeviceId { get; set; }
 
     /// <summary>
     /// 设备代码，与数字身份中的 serialNo 相同
@@ -173,9 +181,9 @@ public partial class DeviceItemViewModel : ViewModelBase
     };
 
     /// <summary>
-    /// 设备 ID 展示文本
+    /// 设备服务上报 ID 的展示文本
     /// </summary>
-    public string DeviceIdText => $"设备 ID：{ValueOrDash(DeviceId)}";
+    public string ServiceDeviceIdText => $"设备 ID：{ValueOrDash(ServiceDeviceId)}";
 
     /// <summary>
     /// 设备代码展示文本
@@ -260,7 +268,7 @@ public partial class DeviceItemViewModel : ViewModelBase
 
     private void Apply(DiscoveryResponse response)
     {
-        DeviceId = response.DeviceId;
+        ServiceDeviceId = response.DeviceId;
         DeviceCode = response.DeviceCode;
         Certification = response.Certification;
         ServiceVersion = response.ServiceVersion;

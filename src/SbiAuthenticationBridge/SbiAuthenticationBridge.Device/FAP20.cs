@@ -1,7 +1,7 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using SbiAuthenticationBridge.Core;
-using SbiAuthenticationBridge.Core.Dto;
 using SbiAuthenticationBridge.Device.Protocol;
 using SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
 
@@ -339,12 +339,30 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            ExecuteRequest("ftm_load_certificate", request, timeoutMs,
-                FtmNativeMethods.LoadCertificate);
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_load_certificate");
+
+                    var result = FtmNativeMethods.LoadCertificate(_deviceHandle, requestPointer,
+                        request.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_load_certificate");
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
 
             var fingerprint = Convert.ToHexString(SHA256.HashData(der));
-            Debug.WriteLine(
-                $"[FAP20] 证书已加载，{der.Length} 字节，SHA-256 {fingerprint}");
+            Debug.WriteLine($"[FAP20] 证书已加载，{der.Length} 字节，SHA-256 {fingerprint}");
             return fingerprint;
         }, cancellationToken);
     }
@@ -356,8 +374,8 @@ public class FAP20 : IDevice
     /// <param name="deviceType">设备类型</param>
     /// <param name="timeoutMs">超时（毫秒）</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>设备发现响应</returns>
-    public Task<DiscoveryResponse> DiscoverAsync(string callbackId,
+    /// <returns>设备发现响应 JSON 文本</returns>
+    public Task<string> DiscoverAsync(string callbackId,
         FtmDeviceType deviceType = FtmDeviceType.Finger,
         uint timeoutMs = DefaultTimeoutMs,
         CancellationToken cancellationToken = default)
@@ -369,10 +387,31 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_discover", request, timeoutMs,
-                FtmNativeMethods.Discover);
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmProtocolCodec.ParseDiscoverResponse(response);
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_discover");
+
+                    var result = FtmNativeMethods.Discover(_deviceHandle, requestPointer,
+                        request.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_discover");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.ReadResponseText(response);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -382,8 +421,8 @@ public class FAP20 : IDevice
     /// <param name="callbackId">设备服务回调地址，1..192 字节可打印 ASCII</param>
     /// <param name="timeoutMs">超时（毫秒）</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>设备信息响应</returns>
-    public Task<DeviceInfoResponse> GetDeviceInfoAsync(string callbackId,
+    /// <returns>设备信息响应 JSON 文本</returns>
+    public Task<string> GetDeviceInfoAsync(string callbackId,
         uint timeoutMs = DefaultTimeoutMs,
         CancellationToken cancellationToken = default)
     {
@@ -394,10 +433,31 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_get_device_info", request, timeoutMs,
-                FtmNativeMethods.GetDeviceInfo);
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmProtocolCodec.ParseDeviceInfoResponse(response);
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_get_device_info");
+
+                    var result = FtmNativeMethods.GetDeviceInfo(_deviceHandle, requestPointer,
+                        request.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_get_device_info");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.ReadResponseText(response);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -416,9 +476,28 @@ public class FAP20 : IDevice
 
         var request = FtmProtocolCodec.EncodeSetTime(utc);
 
-        return Task.Run(
-            () => ExecuteRequestOnly("ftm_setTime", request, timeoutMs, FtmNativeMethods.SetTime),
-            cancellationToken);
+        return Task.Run(() =>
+        {
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_setTime");
+
+                    var result = FtmNativeMethods.SetTime(_deviceHandle, requestPointer,
+                        request.Length, timeoutMs);
+                    ThrowIfFailed(result, "ftm_setTime");
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+            }
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -443,10 +522,31 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_capture_auth", payload, timeoutMs,
-                FtmNativeMethods.CaptureAuth);
+            var requestPointer = Marshal.AllocHGlobal(payload.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmProtocolCodec.ReadResponseText(response);
+            try
+            {
+                Marshal.Copy(payload, 0, requestPointer, payload.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_capture_auth");
+
+                    var result = FtmNativeMethods.CaptureAuth(_deviceHandle, requestPointer,
+                        payload.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_capture_auth");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.ReadResponseText(response);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -468,10 +568,31 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_capture_reg", payload, timeoutMs,
-                FtmNativeMethods.CaptureReg);
+            var requestPointer = Marshal.AllocHGlobal(payload.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmProtocolCodec.ReadResponseText(response);
+            try
+            {
+                Marshal.Copy(payload, 0, requestPointer, payload.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_capture_reg");
+
+                    var result = FtmNativeMethods.CaptureReg(_deviceHandle, requestPointer,
+                        payload.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_capture_reg");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.ReadResponseText(response);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -491,10 +612,31 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteRequest("ftm_get_dkl_public_key", request, timeoutMs,
-                FtmNativeMethods.GetDklPublicKey);
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmProtocolCodec.ParseDklPublicKeyResult(response);
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_get_dkl_public_key");
+
+                    var result = FtmNativeMethods.GetDklPublicKey(_deviceHandle, requestPointer,
+                        request.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_get_dkl_public_key");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.ParseDklPublicKeyResult(response);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -519,10 +661,29 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            ExecuteRequest("ftm_set_dkl_certificate", request, timeoutMs,
-                FtmNativeMethods.SetDklCertificate);
+            var requestPointer = Marshal.AllocHGlobal(request.Length);
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
 
-            return FtmDklResult.Ok;
+            try
+            {
+                Marshal.Copy(request, 0, requestPointer, request.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_set_dkl_certificate");
+
+                    var result = FtmNativeMethods.SetDklCertificate(_deviceHandle, requestPointer,
+                        request.Length, responsePointer, timeoutMs);
+                    ThrowIfFailed(result, "ftm_set_dkl_certificate");
+                }
+
+                return FtmDklResult.Ok;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -545,9 +706,28 @@ public class FAP20 : IDevice
 
         var payload = data.ToArray();
 
-        return Task.Run(
-            () => ExecuteRequestOnly("ftm_send", payload, timeoutMs, FtmNativeMethods.Send),
-            cancellationToken);
+        return Task.Run(() =>
+        {
+            var requestPointer = Marshal.AllocHGlobal(payload.Length);
+
+            try
+            {
+                Marshal.Copy(payload, 0, requestPointer, payload.Length);
+
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_send");
+
+                    var result = FtmNativeMethods.Send(_deviceHandle, requestPointer,
+                        payload.Length, timeoutMs);
+                    ThrowIfFailed(result, "ftm_send");
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(requestPointer);
+            }
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -564,8 +744,27 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var response = ExecuteReceive("ftm_recv", timeoutMs);
-            return FtmProtocolCodec.TrimAtNul(response).ToArray();
+            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+
+            try
+            {
+                lock (_syncRoot)
+                {
+                    EnsureConnected("ftm_recv");
+
+                    var result = FtmNativeMethods.Recv(_deviceHandle, responsePointer,
+                        ResponseBufferSize, timeoutMs);
+                    ThrowIfFailed(result, "ftm_recv");
+                }
+
+                var response = new byte[ResponseBufferSize];
+                Marshal.Copy(responsePointer, response, 0, response.Length);
+                return FtmProtocolCodec.TrimAtNul(response).ToArray();
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(responsePointer);
+            }
         }, cancellationToken);
     }
 
@@ -634,94 +833,6 @@ public class FAP20 : IDevice
             throw new InvalidOperationException($"FAP20 设备未连接，无法执行 {operation}。");
         }
     }
-
-    /// <summary>
-    /// 执行带请求和响应缓冲区的原生命令
-    /// </summary>
-    private byte[] ExecuteRequest(string operation, byte[] request, uint timeoutMs,
-        RequestCommand command)
-    {
-        var response = new byte[ResponseBufferSize];
-
-        lock (_syncRoot)
-        {
-            EnsureConnected(operation);
-
-            int result;
-
-            unsafe
-            {
-                fixed (byte* requestPointer = request)
-                fixed (byte* responsePointer = response)
-                {
-                    result = command(_deviceHandle, (IntPtr)requestPointer, request.Length,
-                        (IntPtr)responsePointer, timeoutMs);
-                }
-            }
-
-            ThrowIfFailed(result, operation);
-        }
-
-        return response;
-    }
-
-    /// <summary>
-    /// 执行只有请求、没有响应缓冲区的原生命令
-    /// </summary>
-    private void ExecuteRequestOnly(string operation, byte[] request, uint timeoutMs,
-        RequestOnlyCommand command)
-    {
-        lock (_syncRoot)
-        {
-            EnsureConnected(operation);
-
-            int result;
-
-            unsafe
-            {
-                fixed (byte* requestPointer = request)
-                {
-                    result = command(_deviceHandle, (IntPtr)requestPointer, request.Length, timeoutMs);
-                }
-            }
-
-            ThrowIfFailed(result, operation);
-        }
-    }
-
-    /// <summary>
-    /// 执行只有响应缓冲区的原生命令
-    /// </summary>
-    private byte[] ExecuteReceive(string operation, uint timeoutMs)
-    {
-        var response = new byte[ResponseBufferSize];
-
-        lock (_syncRoot)
-        {
-            EnsureConnected(operation);
-
-            int result;
-
-            unsafe
-            {
-                fixed (byte* responsePointer = response)
-                {
-                    result = FtmNativeMethods.Recv(_deviceHandle, (IntPtr)responsePointer,
-                        response.Length, timeoutMs);
-                }
-            }
-
-            ThrowIfFailed(result, operation);
-        }
-
-        return response;
-    }
-
-    private delegate int RequestCommand(IntPtr handle, IntPtr request, int requestLength,
-        IntPtr response, uint timeoutMs);
-
-    private delegate int RequestOnlyCommand(IntPtr handle, IntPtr request, int requestLength,
-        uint timeoutMs);
 
     /// <summary>
     /// 统一处理原生命令返回码：0x75 时尝试一次软复位，当前命令仍按失败处理

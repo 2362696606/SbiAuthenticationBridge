@@ -455,3 +455,6 @@ $RECYCLE.BIN/
 
 # Device Provider private keys must never be committed
 **/device-provider/*.key.pem
+
+# DKL1 签发配置可能包含私钥密码，仅保留示例文件
+**/dkl1.yaml

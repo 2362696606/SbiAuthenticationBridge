@@ -1,0 +1,21 @@
+# 复制本文件为 dkl1.yaml 并填写实际路径与密码。
+# dkl1.yaml 已加入 .gitignore，不会被提交。
+# 相对路径以本文件所在目录为基准。
+
+# Device Provider 证书（DER 或 PEM）
+providerCertificatePath: "device-provider/ict_device_provider.cert.der"
+
+# Device Provider 私钥（PKCS#8 PEM，可加密）
+providerPrivateKeyPath: "device-provider/ict_device_provider.key.pem"
+
+# 私钥密码；无密码时留空
+providerPrivateKeyPassword: "change-me"
+
+# 叶证书 Subject 字段
+serialNo: "123456789012"
+make: "CCM"
+model: "CCM4201S"
+deviceProvider: "FTM-Test"
+
+# 可选：签发后的证书保存路径
+issuedCertificatePath: "device-provider/dkl1_device.cer"

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "E:\\code\\local\\ftmBridgeAPI",
+      "E:\\code\\local\\sbi-bridge"
+    ]
+  }
+}

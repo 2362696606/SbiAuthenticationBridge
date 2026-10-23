@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
@@ -18,7 +19,7 @@ namespace SbiAuthenticationBridge.Desktop;
 // ReSharper disable once InconsistentNaming
 public class FAP20DeviceProvider : ISbiDeviceProvider
 {
-    private readonly List<ISbiDevice> _devices = [];
+    private readonly ConcurrentDictionary<string, ISbiDevice> _devices = [];
 
     /// <summary>
     /// 创建设备提供者
@@ -34,11 +35,11 @@ public class FAP20DeviceProvider : ISbiDeviceProvider
         var (vendorId, productId) = ReadDeviceId(configuration);
 
         var fap20 = new FAP20(vendorId, productId);
-        _devices.Add(new FAP20Proxy(fap20, context));
+        _devices.TryAdd(Guid.NewGuid().ToString(), new FAP20Proxy(fap20, context));
     }
 
     /// <inheritdoc />
-    public IReadOnlyCollection<ISbiDevice> Devices => _devices;
+    public IReadOnlyDictionary<string, ISbiDevice> Devices => _devices;
 
     /// <summary>
     /// 读取配置中第一个同时具有 VID/PID 的设备段

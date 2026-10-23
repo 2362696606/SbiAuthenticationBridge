@@ -1,17 +1,8 @@
-using SbiAuthenticationBridge.Services;
-
 namespace SbiAuthenticationBridge.ViewModels;
 
 /// <summary>
-/// 服务操作视图模型；当前设备由全局设备选择决定
+/// 服务操作视图模型：控制宿主服务启停，与设备选择无关
 /// </summary>
-public class ServiceOperateViewModel : DeviceScopedViewModel
+public class ServiceOperateViewModel : ViewModelBase
 {
-    /// <summary>
-    /// 创建服务操作视图模型
-    /// </summary>
-    /// <param name="selectionService">全局设备选择服务</param>
-    public ServiceOperateViewModel(IDeviceSelectionService selectionService) : base(selectionService)
-    {
-    }
 }

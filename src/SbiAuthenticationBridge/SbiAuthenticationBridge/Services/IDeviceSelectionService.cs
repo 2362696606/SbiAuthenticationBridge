@@ -18,6 +18,11 @@ public interface IDeviceSelectionService
     ISbiDevice? SelectedDevice { get; }
 
     /// <summary>
+    /// 当前选择设备的内部标识；未选择时为 <see langword="null"/>
+    /// </summary>
+    string? DeviceId { get; }
+
+    /// <summary>
     /// 选择发生变化时触发
     /// </summary>
     event EventHandler<DeviceSelectionChangedEventArgs>? SelectionChanged;
@@ -25,6 +30,7 @@ public interface IDeviceSelectionService
     /// <summary>
     /// 设置当前选择的设备
     /// </summary>
+    /// <param name="deviceId">设备Id</param>
     /// <param name="device">要选择的设备；<see langword="null"/> 表示取消选择</param>
-    void Select(ISbiDevice? device);
+    void Select(string? deviceId, ISbiDevice? device);
 }

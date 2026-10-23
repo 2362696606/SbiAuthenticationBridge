@@ -20,5 +20,13 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <views:DevicesView />
+    <Grid ColumnDefinitions="380,*">
+        <views:DevicesView />
+        <Border
+            BorderBrush="#33808080"
+            BorderThickness="1,0,0,0"
+            Grid.Column="1">
+            <views:DeviceOperateView />
+        </Border>
+    </Grid>
 </UserControl>

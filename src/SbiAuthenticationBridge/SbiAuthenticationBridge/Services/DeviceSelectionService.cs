@@ -11,39 +11,60 @@ public sealed class DeviceSelectionService : IDeviceSelectionService
 {
     private readonly Lock _gate = new();
 
-    private ISbiDevice? _selectedDevice;
+    /// <summary>
+    /// 当前选择；内部标识与设备实例始终一起更新，避免读到不一致的组合
+    /// </summary>
+    private SelectionEntry _current;
 
     /// <inheritdoc />
-    public ISbiDevice? SelectedDevice
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _selectedDevice;
-            }
-        }
-    }
+    public ISbiDevice? SelectedDevice => ReadSelection().Device;
+
+    /// <inheritdoc />
+    public string? DeviceId => ReadSelection().Id;
 
     /// <inheritdoc />
     public event EventHandler<DeviceSelectionChangedEventArgs>? SelectionChanged;
 
     /// <inheritdoc />
-    public void Select(ISbiDevice? device)
+    public void Select(string? deviceId, ISbiDevice? device)
     {
-        ISbiDevice? previousDevice;
+        if (device is null)
+        {
+            // 取消选择时内部标识必须一起清空，避免残留过期 ID
+            deviceId = null;
+        }
+        else
+        {
+            ArgumentException.ThrowIfNullOrEmpty(deviceId);
+        }
+
+        DeviceSelectionChangedEventArgs args;
 
         lock (_gate)
         {
-            if (ReferenceEquals(_selectedDevice, device))
+            // 内部标识与实例任一变化都视为选择变化
+            if (string.Equals(_current.Id, deviceId, StringComparison.Ordinal)
+                && ReferenceEquals(_current.Device, device))
             {
                 return;
             }
 
-            previousDevice = _selectedDevice;
-            _selectedDevice = device;
+            var previous = _current;
+            _current = new SelectionEntry(deviceId, device);
+
+            args = new DeviceSelectionChangedEventArgs(previous.Id, previous.Device, deviceId, device);
         }
 
-        SelectionChanged?.Invoke(this, new DeviceSelectionChangedEventArgs(previousDevice, device));
+        SelectionChanged?.Invoke(this, args);
     }
+
+    private SelectionEntry ReadSelection()
+    {
+        lock (_gate)
+        {
+            return _current;
+        }
+    }
+
+    private readonly record struct SelectionEntry(string? Id, ISbiDevice? Device);
 }

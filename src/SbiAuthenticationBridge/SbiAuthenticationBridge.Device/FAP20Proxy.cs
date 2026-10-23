@@ -198,8 +198,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         try
         {
             var deviceType = ResolveDeviceType(request.Type, out var invalidType);
-            var response = await _fap20.DiscoverAsync(_hostContext.CallbackId, deviceType,
+            var json = await _fap20.DiscoverAsync(_hostContext.CallbackId, deviceType,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = ParseDiscoveryResponse(json);
 
             CacheIdentity(response.DeviceCode, response.DigitalId);
 
@@ -237,8 +238,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
+            var json = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = ParseDeviceInfoResponse(json);
 
             CacheIdentityFromDeviceInfo(response.DeviceInfo);
 
@@ -575,8 +577,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.DiscoverAsync(_hostContext.CallbackId,
+            var json = await _fap20.DiscoverAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = ParseDiscoveryResponse(json);
 
             var status = ParseDeviceStatus(response.DeviceStatus);
             if (status is not null)
@@ -759,8 +762,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var response = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
+            var json = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = ParseDeviceInfoResponse(json);
             CacheIdentityFromDeviceInfo(response.DeviceInfo);
         }
         catch (OperationCanceledException)
@@ -1070,6 +1074,80 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         return Convert.FromBase64String(base64);
     }
 
+    private static DiscoveryResponse ParseDiscoveryResponse(string json)
+    {
+        using var document = ParseJsonDocument(json, "DISCOVER");
+        var root = RootObject(document, "DISCOVER");
+
+        return new DiscoveryResponse
+        {
+            DeviceId = ReadString(root, "deviceId"),
+            DeviceStatus = ReadVerbatim(root, "deviceStatus"),
+            Certification = ReadString(root, "certification"),
+            ServiceVersion = ReadString(root, "serviceVersion"),
+            DeviceSubId = ReadIntArray(root, "deviceSubId"),
+            CallbackId = ReadString(root, "callbackId"),
+            DigitalId = ReadString(root, "digitalId"),
+            DeviceCode = ReadString(root, "deviceCode"),
+            SpecVersion = ReadStringArray(root, "specVersion"),
+            Purpose = ReadVerbatim(root, "purpose"),
+            Error = ReadError(root)
+        };
+    }
+
+    private static DeviceInfoResponse ParseDeviceInfoResponse(string json)
+    {
+        using var document = ParseJsonDocument(json, "DEVICE_INFO");
+        var root = RootObject(document, "DEVICE_INFO");
+
+        return new DeviceInfoResponse
+        {
+            DeviceInfo = ReadString(root, "deviceInfo"),
+            Error = ReadError(root)
+        };
+    }
+
+    private static JsonDocument ParseJsonDocument(string json, string what)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new FtmProtocolException($"{what} 内容为空，没有可解析的 JSON。");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(json);
+        }
+        catch (JsonException exception)
+        {
+            throw new FtmProtocolException(
+                $"{what} 内容不是合法 JSON：{exception.Message}；前 200 字符：\"{Truncate(json)}\"。");
+        }
+    }
+
+    private static JsonElement RootObject(JsonDocument document, string operation)
+    {
+        var root = document.RootElement;
+
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            if (root.GetArrayLength() == 0)
+            {
+                throw new FtmProtocolException($"{operation} 响应是空数组，没有设备对象。");
+            }
+
+            root = root[0];
+        }
+
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            throw new FtmProtocolException(
+                $"{operation} 响应的主体不是 JSON 对象（实际为 {root.ValueKind}）。");
+        }
+
+        return root;
+    }
+
     private static string? ReadString(JsonElement element, string name)
     {
         return element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
@@ -1092,6 +1170,61 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         };
     }
 
+    private static IReadOnlyList<int>? ReadIntArray(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var single))
+        {
+            return [single];
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var items = new List<int>(value.GetArrayLength());
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number))
+            {
+                items.Add(number);
+            }
+        }
+
+        return items;
+    }
+
+    private static IReadOnlyList<string>? ReadStringArray(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return [value.GetString() ?? ""];
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var items = new List<string>(value.GetArrayLength());
+        foreach (var item in value.EnumerateArray())
+        {
+            items.Add(item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : item.GetRawText());
+        }
+
+        return items;
+    }
+
     private static SbiError ReadError(JsonElement element)
     {
         if (!element.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
@@ -1105,6 +1238,8 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             ErrorInfo = ReadString(error, "errorInfo") ?? "Success"
         };
     }
+
+    private static string Truncate(string text) => text.Length <= 200 ? text : text[..200] + "...";
 
     #endregion
 }

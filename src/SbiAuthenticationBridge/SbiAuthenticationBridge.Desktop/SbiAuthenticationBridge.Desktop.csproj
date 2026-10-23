@@ -15,10 +15,16 @@
     <ItemGroup>
         <PackageReference Include="Avalonia.Desktop"/>
         <PackageReference Include="Microsoft.Extensions.Configuration.Ini" />
+        <PackageReference Include="YamlDotNet" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\SbiAuthenticationBridge.Device\SbiAuthenticationBridge.Device.csproj" />
         <ProjectReference Include="..\SbiAuthenticationBridge\SbiAuthenticationBridge.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="dkl1.example.yaml" CopyToOutputDirectory="PreserveNewest" />
+        <None Update="dkl1.yaml" CopyToOutputDirectory="PreserveNewest" Condition="Exists('dkl1.yaml')" />
     </ItemGroup>
 </Project>

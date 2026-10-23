@@ -7,8 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Prism.DryIoc;
 using Prism.Ioc;
 using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Core.Security;
 using SbiAuthenticationBridge.Services;
-using SbiAuthenticationBridge.ViewModels;
 using SbiAuthenticationBridge.Views;
 
 namespace SbiAuthenticationBridge;
@@ -64,7 +64,9 @@ public class App : PrismApplication
         #endregion
 
         containerRegistry.RegisterSingleton<IDeviceSelectionService, DeviceSelectionService>();
-        containerRegistry.RegisterInstance<ISbiHostContext>(new SbiHostContext("http://127.0.0.1:4501/"));
+        containerRegistry.RegisterInstance<ISbiHostContext>(new SbiHostContext("http://127.0.0.1:4501"));
+        containerRegistry.RegisterInstance<IDkl1CertificateIssuer>(
+            new UnavailableDkl1CertificateIssuer("当前平台未配置 DKL1 证书签发材料。"));
         // containerRegistry.RegisterSingleton<DevicesViewModel>();
 
         PlatformRegistrations?.Invoke(containerRegistry);
