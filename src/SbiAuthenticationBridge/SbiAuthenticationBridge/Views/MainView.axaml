@@ -26,7 +26,21 @@
             BorderBrush="#33808080"
             BorderThickness="1,0,0,0"
             Grid.Column="1">
-            <views:DeviceOperateView />
+            <Grid RowDefinitions="*,4,240">
+                <views:DeviceOperateView MinHeight="200" />
+                <GridSplitter
+                    Background="#33808080"
+                    Grid.Row="1"
+                    HorizontalAlignment="Stretch"
+                    ResizeDirection="Rows" />
+                <Border
+                    BorderBrush="#33808080"
+                    BorderThickness="0,1,0,0"
+                    Grid.Row="2"
+                    MinHeight="120">
+                    <views:LogView />
+                </Border>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

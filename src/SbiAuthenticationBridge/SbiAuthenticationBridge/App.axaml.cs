@@ -12,6 +12,7 @@ using Prism.DryIoc;
 using Prism.Ioc;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Security;
+using SbiAuthenticationBridge.Logging;
 using SbiAuthenticationBridge.Services;
 using SbiAuthenticationBridge.Views;
 
@@ -65,7 +66,21 @@ public class App : PrismApplication
                 MainWindow as Control ?? throw new InvalidOperationException("MainWindow is not set");
         }
 
+        if (ApplicationLifetime is IControlledApplicationLifetime controlledApplicationLifetime)
+        {
+            controlledApplicationLifetime.Exit += OnApplicationExit;
+        }
+
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// 应用退出时关闭并刷新日志管线
+    /// </summary>
+    private static void OnApplicationExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    {
+        _ = e;
+        LoggingBootstrapper.Shutdown();
     }
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
@@ -122,6 +137,7 @@ public class App : PrismApplication
         _serviceCollection.Configure<Dkl1IssuerOptions>(
             configuration.GetSection(Dkl1IssuerSection));
         _serviceCollection.AddSingleton<ICertificateProvider, FileCertificateProvider>();
+        LoggingBootstrapper.Configure(_serviceCollection);
     }
 
     private void ConfigureConfiguration()

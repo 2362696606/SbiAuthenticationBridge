@@ -25,6 +25,7 @@
         <PackageReference Include="Prism.DryIoc.Avalonia" />
         <PackageReference Include="YamlDotNet" />
         <PackageReference Include="Serilog" />
+        <PackageReference Include="Serilog.Extensions.Logging" />
         <PackageReference Include="Serilog.Sinks.Async" />
         <PackageReference Include="Serilog.Sinks.Console" />
         <PackageReference Include="Serilog.Sinks.File" />
