@@ -6,6 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Prism.Events;
 using SbiAuthenticationBridge.Core;
@@ -44,6 +45,8 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
 
     private readonly IEventAggregator _eventAggregator;
 
+    private readonly ILogger<DeviceOperateViewModel> _logger;
+
     /// <summary>
     /// 构造期间不触发选择变化处理
     /// </summary>
@@ -56,21 +59,25 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// <param name="certificateProvider">证书材料提供者</param>
     /// <param name="dkl1Options">DKL1 叶证书 Subject 与输出配置</param>
     /// <param name="eventAggregator">Prism 事件聚合器</param>
+    /// <param name="logger">日志</param>
     public DeviceOperateViewModel(
         IDeviceSelectionService selectionService,
         ICertificateProvider certificateProvider,
         IOptions<Dkl1IssuerOptions> dkl1Options,
-        IEventAggregator eventAggregator)
+        IEventAggregator eventAggregator,
+        ILogger<DeviceOperateViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(selectionService);
         ArgumentNullException.ThrowIfNull(certificateProvider);
         ArgumentNullException.ThrowIfNull(dkl1Options);
         ArgumentNullException.ThrowIfNull(eventAggregator);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _selectionService = selectionService;
         _certificateProvider = certificateProvider;
         _dkl1Options = dkl1Options.Value;
         _eventAggregator = eventAggregator;
+        _logger = logger;
         IsKeyRotationConfigured = IsDkl1Configured(_dkl1Options);
         KeySubjectDescription = IsKeyRotationConfigured
             ? DescribeSubject(_dkl1Options)
@@ -245,6 +252,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
+            _logger.LogWarning(exception, "刷新设备状态失败：{DeviceId}", deviceId);
         }
         finally
         {
@@ -267,9 +275,19 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         ErrorMessage = null;
 
+        _logger.LogDebug(
+            "开始连接设备：{DeviceId}，类型={DeviceType}",
+            selectedDeviceId,
+            device.GetType().Name);
+
         try
         {
             await device.ConnectAsync();
+
+            _logger.LogInformation(
+                "设备已连接：{DeviceId}，类型={DeviceType}",
+                selectedDeviceId,
+                device.GetType().Name);
 
             if (IsStillSelected(selectedDeviceId))
             {
@@ -280,6 +298,15 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
+
+            if (device.IsConnected)
+            {
+                _logger.LogWarning(exception, "设备已连接，但读取状态失败：{DeviceId}", selectedDeviceId);
+            }
+            else
+            {
+                _logger.LogError(exception, "连接设备失败：{DeviceId}", selectedDeviceId);
+            }
         }
         finally
         {
@@ -302,9 +329,13 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         ErrorMessage = null;
 
+        _logger.LogDebug("开始断开设备：{DeviceId}", selectedDeviceId);
+
         try
         {
             await device.DisconnectAsync();
+
+            _logger.LogInformation("设备已断开：{DeviceId}", selectedDeviceId);
 
             if (IsStillSelected(selectedDeviceId))
             {
@@ -315,6 +346,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
+            _logger.LogError(exception, "断开设备失败：{DeviceId}", selectedDeviceId);
         }
         finally
         {
@@ -338,9 +370,19 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         ErrorMessage = null;
 
+        _logger.LogDebug(
+            "开始设置设备状态：{DeviceId} -> {Status}",
+            selectedDeviceId,
+            statusOption.Value);
+
         try
         {
             await statusControl.SetDeviceStatusAsync(statusOption.Value);
+
+            _logger.LogInformation(
+                "设备状态已设置：{DeviceId} -> {Status}",
+                selectedDeviceId,
+                statusOption.Value);
 
             if (IsStillSelected(selectedDeviceId))
             {
@@ -350,6 +392,11 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
+            _logger.LogError(
+                exception,
+                "设置设备状态失败：{DeviceId} -> {Status}",
+                selectedDeviceId,
+                statusOption.Value);
         }
         finally
         {
@@ -371,15 +418,23 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         ErrorMessage = null;
 
+        _logger.LogDebug("开始轮换设备密钥：{DeviceId}", selectedDeviceId);
+
         try
         {
             var publicKey = await secureDevice.GetDkl1PublicKeyAsync();
             var certificateDer = CreateDkl1Certificate(publicKey.SubjectPublicKeyInfo);
             await secureDevice.SetDkl1CertificateAsync(certificateDer);
+
+            _logger.LogInformation(
+                "设备密钥轮换完成：{DeviceId}，Subject={Subject}",
+                selectedDeviceId,
+                KeySubjectDescription);
         }
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
+            _logger.LogError(exception, "设备密钥轮换失败：{DeviceId}", selectedDeviceId);
         }
         finally
         {
