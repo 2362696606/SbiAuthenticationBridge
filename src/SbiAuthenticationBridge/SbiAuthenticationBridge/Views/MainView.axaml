@@ -26,17 +26,18 @@
             BorderBrush="#33808080"
             BorderThickness="1,0,0,0"
             Grid.Column="1">
-            <Grid RowDefinitions="*,4,240">
-                <views:DeviceOperateView MinHeight="200" />
+            <Grid RowDefinitions="Auto,*,4,240">
+                <views:ServiceOperateView />
+                <views:DeviceOperateView Grid.Row="1" MinHeight="200" />
                 <GridSplitter
                     Background="#33808080"
-                    Grid.Row="1"
+                    Grid.Row="2"
                     HorizontalAlignment="Stretch"
                     ResizeDirection="Rows" />
                 <Border
                     BorderBrush="#33808080"
                     BorderThickness="0,1,0,0"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     MinHeight="120">
                     <views:LogView />
                 </Border>
