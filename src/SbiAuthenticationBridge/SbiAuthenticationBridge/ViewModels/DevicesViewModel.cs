@@ -3,9 +3,13 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using Prism.Events;
 using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Events;
 using SbiAuthenticationBridge.Services;
 
 namespace SbiAuthenticationBridge.ViewModels;
@@ -19,6 +23,8 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
 
     private readonly ISbiDeviceProvider _deviceProvider;
     private readonly IDeviceSelectionService _selectionService;
+    private readonly IEventAggregator _eventAggregator;
+    private readonly ILogger<DevicesViewModel> _logger;
 
     /// <summary>
     /// 防止视图模型与服务之间的选择同步互相触发
@@ -34,14 +40,28 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
     /// </summary>
     /// <param name="deviceProvider">设备提供者</param>
     /// <param name="selectionService">全局设备选择服务</param>
-    public DevicesViewModel(ISbiDeviceProvider deviceProvider, IDeviceSelectionService selectionService)
+    /// <param name="eventAggregator">Prism 事件聚合器</param>
+    /// <param name="logger">日志</param>
+    public DevicesViewModel(
+        ISbiDeviceProvider deviceProvider,
+        IDeviceSelectionService selectionService,
+        IEventAggregator eventAggregator,
+        ILogger<DevicesViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(deviceProvider);
         ArgumentNullException.ThrowIfNull(selectionService);
+        ArgumentNullException.ThrowIfNull(eventAggregator);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _deviceProvider = deviceProvider;
         _selectionService = selectionService;
+        _eventAggregator = eventAggregator;
+        _logger = logger;
+
         _selectionService.SelectionChanged += OnGlobalSelectionChanged;
+        _eventAggregator
+            .GetEvent<DeviceConnectionChangedEvent>()
+            .Subscribe(OnDeviceConnectionChanged);
     }
 
     #endregion
@@ -193,6 +213,53 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
                 string.Equals(item.InnerDeviceId, innerDeviceId, StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// 设备连接状态变化后刷新对应列表项
+    /// </summary>
+    /// <param name="args">事件参数</param>
+    private void OnDeviceConnectionChanged(DeviceConnectionChangedEventArgs args)
+    {
+        if (string.IsNullOrEmpty(args.DeviceId))
+        {
+            return;
+        }
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            _ = RefreshDeviceAsync(args.DeviceId);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => _ = RefreshDeviceAsync(args.DeviceId));
+        }
+    }
+
+    /// <summary>
+    /// 重新读取指定设备的基础信息与状态
+    /// </summary>
+    /// <param name="deviceId">设备内部标识</param>
+    private async Task RefreshDeviceAsync(string deviceId)
+    {
+        var item = FindDeviceItem(deviceId);
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await item.RefreshAsync(CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("刷新设备 {DeviceId} 已取消", deviceId);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "刷新设备 {DeviceId} 失败", deviceId);
+        }
+    }
+
     private void OnGlobalSelectionChanged(object? sender, DeviceSelectionChangedEventArgs e)
     {
         if (string.Equals(SelectedDevice?.InnerDeviceId, e.SelectedDeviceId, StringComparison.Ordinal))
@@ -220,6 +287,10 @@ public partial class DevicesViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _selectionService.SelectionChanged -= OnGlobalSelectionChanged;
+        _eventAggregator
+            .GetEvent<DeviceConnectionChangedEvent>()
+            .Unsubscribe(OnDeviceConnectionChanged);
+
         GC.SuppressFinalize(this);
     }
 

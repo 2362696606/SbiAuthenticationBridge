@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Options;
+using Prism.Events;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Dto.Enum;
 using SbiAuthenticationBridge.Core.Security;
+using SbiAuthenticationBridge.Events;
 using SbiAuthenticationBridge.Services;
 
 namespace SbiAuthenticationBridge.ViewModels;
@@ -40,6 +42,8 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
 
     private readonly Dkl1IssuerOptions _dkl1Options;
 
+    private readonly IEventAggregator _eventAggregator;
+
     /// <summary>
     /// 构造期间不触发选择变化处理
     /// </summary>
@@ -51,18 +55,22 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// <param name="selectionService">全局设备选择服务</param>
     /// <param name="certificateProvider">证书材料提供者</param>
     /// <param name="dkl1Options">DKL1 叶证书 Subject 与输出配置</param>
+    /// <param name="eventAggregator">Prism 事件聚合器</param>
     public DeviceOperateViewModel(
         IDeviceSelectionService selectionService,
         ICertificateProvider certificateProvider,
-        IOptions<Dkl1IssuerOptions> dkl1Options)
+        IOptions<Dkl1IssuerOptions> dkl1Options,
+        IEventAggregator eventAggregator)
     {
         ArgumentNullException.ThrowIfNull(selectionService);
         ArgumentNullException.ThrowIfNull(certificateProvider);
         ArgumentNullException.ThrowIfNull(dkl1Options);
+        ArgumentNullException.ThrowIfNull(eventAggregator);
 
         _selectionService = selectionService;
         _certificateProvider = certificateProvider;
         _dkl1Options = dkl1Options.Value;
+        _eventAggregator = eventAggregator;
         IsKeyRotationConfigured = IsDkl1Configured(_dkl1Options);
         KeySubjectDescription = IsKeyRotationConfigured
             ? DescribeSubject(_dkl1Options)
@@ -306,6 +314,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         {
             IsBusy = false;
             SynchronizeConnectionState(selectedDeviceId);
+            PublishConnectionChanged(selectedDeviceId, device.IsConnected);
         }
     }
 
@@ -340,6 +349,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         {
             IsBusy = false;
             SynchronizeConnectionState(selectedDeviceId);
+            PublishConnectionChanged(selectedDeviceId, device.IsConnected);
         }
     }
 
@@ -582,6 +592,23 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         Path.IsPathRooted(path)
             ? path
             : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+
+    /// <summary>
+    /// 通知设备列表刷新指定设备的连接状态
+    /// </summary>
+    /// <param name="deviceId">设备内部标识</param>
+    /// <param name="isConnected">操作后的连接状态</param>
+    private void PublishConnectionChanged(string? deviceId, bool isConnected)
+    {
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            return;
+        }
+
+        _eventAggregator
+            .GetEvent<DeviceConnectionChangedEvent>()
+            .Publish(new DeviceConnectionChangedEventArgs(deviceId, isConnected));
+    }
 
     private void NotifyCommandStates()
     {
