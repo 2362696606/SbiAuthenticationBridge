@@ -198,7 +198,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         try
         {
             var deviceType = ResolveDeviceType(request.Type, out var invalidType);
-            var json = await _fap20.DiscoverAsync(_hostContext.CallbackId, deviceType,
+            var json = await _fap20.DiscoverAsync(_hostContext.GetCallbackId(DevicePurpose.Auth), deviceType,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             var response = ParseDiscoveryResponse(json);
 
@@ -238,7 +238,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var json = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
+            var json = await _fap20.GetDeviceInfoAsync(_hostContext.GetCallbackId(DevicePurpose.Auth),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             var response = ParseDeviceInfoResponse(json);
 
@@ -577,7 +577,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var json = await _fap20.DiscoverAsync(_hostContext.CallbackId,
+            var json = await _fap20.DiscoverAsync(_hostContext.GetCallbackId(DevicePurpose.Auth),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             var response = ParseDiscoveryResponse(json);
 
@@ -762,7 +762,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
         try
         {
-            var json = await _fap20.GetDeviceInfoAsync(_hostContext.CallbackId,
+            var json = await _fap20.GetDeviceInfoAsync(_hostContext.GetCallbackId(DevicePurpose.Auth),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             var response = ParseDeviceInfoResponse(json);
             CacheIdentityFromDeviceInfo(response.DeviceInfo);

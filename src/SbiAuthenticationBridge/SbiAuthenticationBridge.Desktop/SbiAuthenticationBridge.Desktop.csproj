@@ -20,6 +20,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\SbiAuthenticationBridge.Device\SbiAuthenticationBridge.Device.csproj" />
+        <ProjectReference Include="..\SbiAuthenticationBridge.Host.Http\SbiAuthenticationBridge.Host.Http.csproj" />
         <ProjectReference Include="..\SbiAuthenticationBridge\SbiAuthenticationBridge.csproj"/>
     </ItemGroup>
 

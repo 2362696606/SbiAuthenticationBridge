@@ -54,6 +54,11 @@ public class App : PrismApplication
     public Action<IContainerRegistry>? PlatformRegistrations { get; set; }
 
     /// <summary>
+    /// 平台服务注册（在服务集合装入容器前调用）
+    /// </summary>
+    public Action<IServiceCollection>? PlatformServiceRegistrations { get; set; }
+
+    /// <summary>
     /// 窗体工厂方法
     /// </summary>
     public Func<AvaloniaObject>? ShellFactory { get; set; }
@@ -138,6 +143,7 @@ public class App : PrismApplication
             configuration.GetSection(Dkl1IssuerSection));
         _serviceCollection.AddSingleton<ICertificateProvider, FileCertificateProvider>();
         LoggingBootstrapper.Configure(_serviceCollection);
+        PlatformServiceRegistrations?.Invoke(_serviceCollection);
     }
 
     private void ConfigureConfiguration()

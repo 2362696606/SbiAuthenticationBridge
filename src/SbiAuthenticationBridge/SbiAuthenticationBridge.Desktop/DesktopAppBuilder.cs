@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Prism.Ioc;
 using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Host.Http;
 using SbiAuthenticationBridge.Views;
 
 namespace SbiAuthenticationBridge.Desktop;
@@ -12,6 +13,7 @@ public class DesktopAppBuilder
         var app = new App
         {
             PlatformRegistrations = RegisterTypes,
+            PlatformServiceRegistrations = services => services.AddSbiHttpServices(),
             AddPlatformConfiguration = ConfigConfiguration
         };
         app.ShellFactory = () => app.Container.Resolve<MainWindow>();

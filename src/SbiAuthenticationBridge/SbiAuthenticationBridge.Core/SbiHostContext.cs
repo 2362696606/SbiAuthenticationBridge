@@ -1,3 +1,5 @@
+using SbiAuthenticationBridge.Core.Dto.Enum;
+
 namespace SbiAuthenticationBridge.Core;
 
 /// <summary>
@@ -10,23 +12,44 @@ public sealed class SbiHostContext : ISbiHostContext
     /// </summary>
     private const int MaxCallbackIdLength = 192;
 
-    private string _callbackId;
+    private readonly string[] _callbackIds =
+    [
+        string.Empty,
+        string.Empty,
+    ];
 
     /// <summary>
     /// 创建宿主上下文
     /// </summary>
-    /// <param name="callbackId">初始回调标识</param>
+    /// <param name="callbackId">认证与注册服务共用的初始回调标识</param>
     /// <exception cref="ArgumentException">为空、过长或含非可打印 ASCII 字符</exception>
     public SbiHostContext(string callbackId)
     {
-        _callbackId = Validate(callbackId);
+        var value = Validate(callbackId);
+        _callbackIds[(int)DevicePurpose.Auth] = value;
+        _callbackIds[(int)DevicePurpose.Registration] = value;
     }
 
     /// <inheritdoc />
-    public string CallbackId
+    public string GetCallbackId(DevicePurpose purpose)
     {
-        get => Volatile.Read(ref _callbackId);
-        set => Volatile.Write(ref _callbackId, Validate(value));
+        EnsurePurpose(purpose);
+        return Volatile.Read(ref _callbackIds[(int)purpose]);
+    }
+
+    /// <inheritdoc />
+    public void SetCallbackId(DevicePurpose purpose, string callbackId)
+    {
+        EnsurePurpose(purpose);
+        Volatile.Write(ref _callbackIds[(int)purpose], Validate(callbackId));
+    }
+
+    private static void EnsurePurpose(DevicePurpose purpose)
+    {
+        if (purpose is not (DevicePurpose.Auth or DevicePurpose.Registration))
+        {
+            throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "不支持的设备用途。");
+        }
     }
 
     private static string Validate(string callbackId)

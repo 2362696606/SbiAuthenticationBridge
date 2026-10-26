@@ -81,7 +81,7 @@
 ❌ 违规，禁止：
 - Core 反向依赖 Device / Host / Host.Http / SbiAuthenticationBridge
 - ViewModel / Handler 直接 new / 直接引用 Device、Host 里面的实现类
-- Desktop 直接引用 Device、Host、Host.Http
+- Desktop 直接引用 Device、Host
 - Device 依赖 Host.Http，Host.Http 依赖 ViewModel 等跨域乱依赖
 - 在Core中写任何具体硬件、HTTP、平台相关实现
 
