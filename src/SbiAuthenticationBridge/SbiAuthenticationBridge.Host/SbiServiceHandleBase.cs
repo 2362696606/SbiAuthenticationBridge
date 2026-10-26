@@ -158,6 +158,15 @@ internal abstract class SbiServiceHandleBase : ISbiServiceHandle
     }
 
     /// <summary>
+    /// 采集前准备已路由的设备；默认无操作
+    /// </summary>
+    /// <param name="device">已路由到的设备</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    protected virtual Task PrepareDeviceAsync(
+        ISbiDevice device,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
     /// 按 bio 项路由并合并采集结果
     /// </summary>
     /// <param name="operation">操作名称，用于日志</param>
@@ -221,6 +230,8 @@ internal abstract class SbiServiceHandleBase : ISbiServiceHandle
 
             try
             {
+                await PrepareDeviceAsync(device, cancellationToken).ConfigureAwait(false);
+
                 var response = await captureAsync(device, CreateSubRequest(request, bio), cancellationToken)
                     .ConfigureAwait(false);
 
@@ -295,8 +306,9 @@ internal abstract class SbiServiceHandleBase : ISbiServiceHandle
         SpecVersion = SbiSpecVersion,
         Data = string.Empty,
         Hash = string.Empty,
-        SessionKey = string.Empty,
-        Thumbprint = string.Empty,
+        // 错误响应不携带认证专属字段；Registration 错误 Schema 不允许这两个字段出现
+        SessionKey = null,
+        Thumbprint = null,
         Error = error,
     };
 

@@ -42,11 +42,12 @@ public class DiscoveryResponse
     /// 支持的设备子 ID 数组
     /// </summary>
     /// <remarks>
-    /// 允许 1、2、3：指纹/虹膜中 1 为左、2 为右、3 为双拇指/双眼；
+    /// CTK 0.9.5 Schema 要求字符串枚举 "0".."3"：指纹/虹膜中 1 为左、2 为右、3 为双拇指/双眼；
     /// 不知道具体子 ID 时为 0（指纹平扫不适用 0）。子 ID 从 1 起按存在的子设备顺序递增。
+    /// 无子设备时该字段省略。
     /// </remarks>
     [JsonPropertyName("deviceSubId")]
-    public IReadOnlyList<int>? DeviceSubId { get; set; }
+    public IReadOnlyList<string>? DeviceSubId { get; set; }
 
     /// <summary>
     /// 回调地址

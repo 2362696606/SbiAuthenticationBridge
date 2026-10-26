@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Common;
@@ -99,7 +100,8 @@ internal static class SbiDeviceSelector
                 {
                     if (descriptor.Responses.Any(response =>
                             response.Error is null
-                            && response.DeviceSubId?.Contains(deviceSubId.Value) == true))
+                            && response.DeviceSubId?.Contains(
+                                deviceSubId.Value.ToString(CultureInfo.InvariantCulture)) == true))
                     {
                         return descriptor.Device;
                     }

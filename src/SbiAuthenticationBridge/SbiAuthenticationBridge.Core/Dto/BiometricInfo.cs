@@ -61,6 +61,17 @@ public class BiometricInfo
     public string? Thumbprint { get; set; }
 
     /// <summary>
+    /// 采集数据解码后的内容，供 CTK 等调用方校验
+    /// </summary>
+    /// <remarks>
+    /// 成功采集时由设备层解码 <see cref="Data"/> 填充；错误响应或无法解码时为
+    /// <see langword="null"/> 并不写出（CTK 错误 Schema 不允许该字段）。
+    /// </remarks>
+    [JsonPropertyName("dataDecoded")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CaptureDataDecoded? DataDecoded { get; set; }
+
+    /// <summary>
     /// 错误信息，成功时为错误码 <c>0</c>
     /// </summary>
     /// <remarks>

@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Common;
 using SbiAuthenticationBridge.Core.Dto;
@@ -42,12 +44,17 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// <summary>
     /// 单次轮询调用原生命令的最长等待时间，便于在 SBI 超时前反复检查手指
     /// </summary>
-    private const int CapturePollTimeoutMs = 3_000;
+    private const int CapturePollTimeoutMs = 5_000;
 
     /// <summary>
     /// 轮询间隔
     /// </summary>
     private const int CaptureRetryDelayMs = 200;
+
+    /// <summary>
+    /// 证书下发遇到 0x75 复位后的重试间隔
+    /// </summary>
+    private const int CertificateRetryDelayMs = 500;
 
     /// <summary>
     /// 多指采集时留给用户换手指的时间
@@ -298,6 +305,12 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         var environment = ResolveEnvironment(request.Env);
         var bioEntries = request.Bio is { Count: > 0 } ? request.Bio : null;
 
+        if (HasBioCountMismatch(bioEntries))
+        {
+            Debug.WriteLine("[FAP20Proxy] CAPTURE bioCount 与请求不匹配，返回 109。");
+            return CreateErrorResponse(SbiErrorHelper.RequestedBiometricCountNotSupported);
+        }
+
         var deviceId = await ResolveDeviceIdAsync(bioEntries, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(deviceId))
         {
@@ -489,6 +502,20 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         {
             throw;
         }
+        catch (FtmCommandException exception)
+            when (exception.ResultCode == FAP20.UsbTimeoutResultCode)
+        {
+            // 本轮等待手指超时，设备仍在线，交给采集循环继续轮询
+            Debug.WriteLine($"[FAP20Proxy] CAPTURE_AUTH 超时：{exception.Message}");
+            return null;
+        }
+        catch (FtmCommandException exception)
+            when (exception.ResultCode == FAP20.DeviceBusyResultCode)
+        {
+            // ThrowIfFailed 已执行软复位，继续下一轮采集，不把设备忙返回给 CTK
+            Debug.WriteLine($"[FAP20Proxy] CAPTURE_AUTH 设备忙：{exception.Message}");
+            return null;
+        }
         catch (Exception exception) when (IsExpectedDeviceFailure(exception))
         {
             Debug.WriteLine($"[FAP20Proxy] CAPTURE_AUTH 失败：{exception}");
@@ -551,8 +578,29 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             throw new ArgumentException("域加密证书 DER 不能为空。", nameof(certificateDer));
         }
 
-        await _fap20.LoadCertificateAsync(certificateDer, FAP20.DefaultCertificateTimeoutMs,
-            cancellationToken).ConfigureAwait(false);
+        // 证书下发是采集前置步骤，排队等待而不是返回设备忙，避免与进行中的采集交错
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            try
+            {
+                await _fap20.LoadCertificateAsync(certificateDer, FAP20.DefaultCertificateTimeoutMs,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (FtmCommandException exception)
+                when (exception.ResultCode == FAP20.DeviceBusyResultCode)
+            {
+                // 底层已软复位；设备恢复空闲后完整重发一次证书
+                Debug.WriteLine($"[FAP20Proxy] LOAD_CERTIFICATE 设备忙，复位后重试：{exception.Message}");
+                await Task.Delay(CertificateRetryDelayMs, cancellationToken).ConfigureAwait(false);
+                await _fap20.LoadCertificateAsync(certificateDer, FAP20.DefaultCertificateTimeoutMs,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
     }
 
     #endregion
@@ -708,6 +756,37 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         return count < 1 ? 1 : Math.Min(count, MaxBioCount);
     }
 
+    /// <summary>
+    /// 判断请求的 bioCount 是否与固件/声明不匹配
+    /// </summary>
+    private static bool HasBioCountMismatch(IReadOnlyList<BioInfo>? entries)
+    {
+        if (entries is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry.Count is not { } count)
+            {
+                continue;
+            }
+
+            if (count is < 1 or > 9)
+            {
+                return true;
+            }
+
+            if (entry.BioSubType is { Count: > 0 } subTypes && count != subTypes.Count)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static int ResolveRequestedScore(BioInfo? entry)
     {
         var score = entry?.RequestedScore ?? FtmCaptureRequest.DefaultRequestedScore;
@@ -858,16 +937,94 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
                 $"CAPTURE_AUTH 响应主体不是 JSON 对象（实际为 {root.ValueKind}）。");
         }
 
+        var data = ReadString(root, "data") ?? "";
+        var error = ReadError(root);
+
         return new BiometricInfo
         {
             SpecVersion = ReadString(root, "specVersion") ?? SbiSpecVersion,
-            Data = ReadString(root, "data") ?? "",
+            Data = data,
             Hash = ReadString(root, "hash") ?? "",
             SessionKey = ReadString(root, "sessionKey") ?? "",
             Thumbprint = ReadString(root, "thumbprint") ?? "",
-            Error = ReadError(root)
+            DataDecoded = IsSuccess(error) && !string.IsNullOrEmpty(data)
+                ? TryDecodeCaptureData(data)
+                : null,
+            Error = error
         };
     }
+
+    /// <summary>
+    /// Capture JWT payload 的反序列化选项
+    /// </summary>
+    private static readonly JsonSerializerOptions CapturePayloadOptions = new(JsonSerializerDefaults.Web)
+    {
+        NumberHandling = JsonNumberHandling.AllowReadingFromString,
+    };
+
+    /// <summary>
+    /// 解码 Capture JWT payload，生成 CTK 所需的 dataDecoded
+    /// </summary>
+    /// <param name="data">设备返回的 Capture JWT</param>
+    /// <returns>解码结果；格式无效时为 <see langword="null"/></returns>
+    private static CaptureDataDecoded? TryDecodeCaptureData(string data)
+    {
+        if (!TryDecodeJwtPayload(data, out var payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var captureData = JsonSerializer.Deserialize<CaptureData>(payloadJson, CapturePayloadOptions);
+            if (captureData is null)
+            {
+                return null;
+            }
+
+            DigitalId? digitalId = null;
+            if (TryDecodeJwtPayload(captureData.DigitalId, out var digitalIdJson))
+            {
+                try
+                {
+                    digitalId = JsonSerializer.Deserialize<DigitalId>(digitalIdJson, CapturePayloadOptions);
+                }
+                catch (JsonException exception)
+                {
+                    Debug.WriteLine($"[FAP20Proxy] digitalIdDecoded 解析失败：{exception.Message}");
+                }
+            }
+
+            return new CaptureDataDecoded
+            {
+                DigitalId = captureData.DigitalId,
+                DigitalIdDecoded = digitalId,
+                DeviceCode = captureData.DeviceCode,
+                DeviceServiceVersion = captureData.DeviceServiceVersion,
+                BioType = captureData.BioType,
+                BioSubType = captureData.BioSubType,
+                Purpose = captureData.Purpose,
+                Env = captureData.Env,
+                DomainUri = captureData.DomainUri,
+                BioValue = captureData.BioValue,
+                TransactionId = captureData.TransactionId,
+                Timestamp = captureData.Timestamp,
+                RequestedScore = FormatScore(captureData.RequestedScore),
+                QualityScore = FormatScore(captureData.QualityScore),
+            };
+        }
+        catch (JsonException exception)
+        {
+            Debug.WriteLine($"[FAP20Proxy] CAPTURE dataDecoded 解码失败：{exception.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 按 CTK 要求把分数序列化为字符串
+    /// </summary>
+    private static string? FormatScore(double? score) =>
+        score?.ToString("0.########", CultureInfo.InvariantCulture);
 
     private static double ExtractQualityScore(string? data)
     {
@@ -898,10 +1055,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         }
     }
 
-    private static bool IsSuccess(BiometricInfo biometric)
-    {
-        return biometric.Error?.ErrorCode is null or SuccessErrorCode;
-    }
+    private static bool IsSuccess(BiometricInfo biometric) => IsSuccess(biometric.Error);
+
+    private static bool IsSuccess(SbiError? error) => error?.ErrorCode is null or SuccessErrorCode;
 
     private static CaptureResponse CreateErrorResponse(SbiError error)
     {
@@ -915,8 +1071,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             SpecVersion = SbiSpecVersion,
             Data = "",
             Hash = "",
-            SessionKey = "",
-            Thumbprint = "",
+            // 错误响应不携带认证专属字段；Registration 错误 Schema 不允许这两个字段出现
+            SessionKey = null,
+            Thumbprint = null,
             Error = error
         };
     }
@@ -949,6 +1106,17 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         "Not Ready" or "NotReady" => DeviceStatus.NotReady,
         "Not Registered" or "NotRegistered" => DeviceStatus.NotRegistered,
         _ => null
+    };
+
+    /// <summary>
+    /// 把固件状态值归一化为 CTK Schema 允许的枚举
+    /// </summary>
+    private static string? NormalizeDeviceStatus(string? status) => status?.Trim() switch
+    {
+        "Normal" => "Ready",
+        "NotReady" => "Not Ready",
+        "NotRegistered" => "Not Registered",
+        _ => status
     };
 
     private void CacheIdentity(string? deviceCode, string? digitalId)
@@ -1078,14 +1246,15 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     {
         using var document = ParseJsonDocument(json, "DISCOVER");
         var root = RootObject(document, "DISCOVER");
+        var deviceSubIds = ReadStringArray(root, "deviceSubId");
 
         return new DiscoveryResponse
         {
             DeviceId = ReadString(root, "deviceId"),
-            DeviceStatus = ReadVerbatim(root, "deviceStatus"),
+            DeviceStatus = NormalizeDeviceStatus(ReadVerbatim(root, "deviceStatus")),
             Certification = ReadString(root, "certification"),
             ServiceVersion = ReadString(root, "serviceVersion"),
-            DeviceSubId = ReadIntArray(root, "deviceSubId"),
+            DeviceSubId = deviceSubIds is { Count: > 0 } ? deviceSubIds : null,
             CallbackId = ReadString(root, "callbackId"),
             DigitalId = ReadString(root, "digitalId"),
             DeviceCode = ReadString(root, "deviceCode"),
@@ -1170,35 +1339,6 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         };
     }
 
-    private static IReadOnlyList<int>? ReadIntArray(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value))
-        {
-            return null;
-        }
-
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var single))
-        {
-            return [single];
-        }
-
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        var items = new List<int>(value.GetArrayLength());
-        foreach (var item in value.EnumerateArray())
-        {
-            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number))
-            {
-                items.Add(number);
-            }
-        }
-
-        return items;
-    }
-
     private static IReadOnlyList<string>? ReadStringArray(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value))
@@ -1232,10 +1372,20 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             return SbiErrorHelper.Success;
         }
 
+        var errorCode = ReadVerbatim(error, "errorCode");
+
+        // 固件成功时 errorCode 可能为 "0" 但 errorInfo 为空，CTK 要求固定为 Success
+        if (string.IsNullOrWhiteSpace(errorCode) || errorCode == SuccessErrorCode)
+        {
+            return SbiErrorHelper.Success;
+        }
+
+        var errorInfo = ReadString(error, "errorInfo");
+
         return new SbiError
         {
-            ErrorCode = ReadVerbatim(error, "errorCode") ?? SuccessErrorCode,
-            ErrorInfo = ReadString(error, "errorInfo") ?? "Success"
+            ErrorCode = errorCode,
+            ErrorInfo = string.IsNullOrWhiteSpace(errorInfo) ? "Device error" : errorInfo
         };
     }
 

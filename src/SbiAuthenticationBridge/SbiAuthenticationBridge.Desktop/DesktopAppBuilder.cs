@@ -22,6 +22,7 @@ public class DesktopAppBuilder
 
     private static void RegisterTypes(IContainerRegistry containerRegistry)
     {
+        containerRegistry.Register<ISbiDeviceFactory, FAP20Factory>();
         containerRegistry.RegisterSingleton<ISbiDeviceProvider, FAP20DeviceProvider>();
     }
 

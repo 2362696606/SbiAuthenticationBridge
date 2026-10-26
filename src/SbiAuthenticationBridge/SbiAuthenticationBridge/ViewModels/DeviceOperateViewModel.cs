@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Prism.Events;
 using SbiAuthenticationBridge.Core;
+using SbiAuthenticationBridge.Core.Dto;
 using SbiAuthenticationBridge.Core.Dto.Enum;
 using SbiAuthenticationBridge.Core.Security;
 using SbiAuthenticationBridge.Events;
@@ -57,7 +62,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// </summary>
     /// <param name="selectionService">全局设备选择服务</param>
     /// <param name="certificateProvider">证书材料提供者</param>
-    /// <param name="dkl1Options">DKL1 叶证书 Subject 与输出配置</param>
+    /// <param name="dkl1Options">DKL1 叶证书输出配置</param>
     /// <param name="eventAggregator">Prism 事件聚合器</param>
     /// <param name="logger">日志</param>
     public DeviceOperateViewModel(
@@ -78,10 +83,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         _dkl1Options = dkl1Options.Value;
         _eventAggregator = eventAggregator;
         _logger = logger;
-        IsKeyRotationConfigured = IsDkl1Configured(_dkl1Options);
-        KeySubjectDescription = IsKeyRotationConfigured
-            ? DescribeSubject(_dkl1Options)
-            : "DKL1 签发材料未配置。";
 
         SelectedDevice = selectionService.SelectedDevice;
         SelectedDeviceId = selectionService.DeviceId;
@@ -120,16 +121,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// 是否已选择设备
     /// </summary>
     public bool HasSelectedDevice => SelectedDevice is not null;
-
-    /// <summary>
-    /// 叶证书 Subject，用于界面展示
-    /// </summary>
-    public string KeySubjectDescription { get; }
-
-    /// <summary>
-    /// 是否已配置 DKL1 签发材料
-    /// </summary>
-    public bool IsKeyRotationConfigured { get; }
 
     /// <summary>
     /// 是否正在执行操作
@@ -423,13 +414,14 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         try
         {
             var publicKey = await secureDevice.GetDkl1PublicKeyAsync();
-            var certificateDer = CreateDkl1Certificate(publicKey.SubjectPublicKeyInfo);
+            var identity = await ResolveDkl1IdentityAsync();
+            var certificateDer = CreateDkl1Certificate(publicKey.SubjectPublicKeyInfo, identity);
             await secureDevice.SetDkl1CertificateAsync(certificateDer);
 
             _logger.LogInformation(
                 "设备密钥轮换完成：{DeviceId}，Subject={Subject}",
                 selectedDeviceId,
-                KeySubjectDescription);
+                DescribeIdentity(identity));
         }
         catch (Exception exception)
         {
@@ -458,7 +450,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     private bool CanRotateKey() =>
         !IsBusy
         && IsDeviceUsable
-        && IsKeyRotationConfigured
         && SelectedDevice is IFtmSecureDevice;
 
     /// <summary>
@@ -520,7 +511,9 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// 使用 Device Provider 私钥为设备公钥签发 DKL1 叶证书
     /// </summary>
-    private ReadOnlyMemory<byte> CreateDkl1Certificate(ReadOnlyMemory<byte> subjectPublicKeyInfo)
+    private ReadOnlyMemory<byte> CreateDkl1Certificate(
+        ReadOnlyMemory<byte> subjectPublicKeyInfo,
+        Dkl1Identity identity)
     {
         if (subjectPublicKeyInfo.IsEmpty)
         {
@@ -534,7 +527,7 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
             _certificateProvider.ProviderCertificate,
             _certificateProvider.ProviderPrivateKey,
             deviceKey,
-            CreateSubjectName(),
+            CreateSubjectName(identity),
             notBefore,
             notBefore + CertificateLifetime);
 
@@ -549,17 +542,144 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         return certificateDer;
     }
 
-    private X500DistinguishedName CreateSubjectName()
+    private static X500DistinguishedName CreateSubjectName(Dkl1Identity identity)
     {
         var subject = new X500DistinguishedNameBuilder();
         subject.AddCountryOrRegion("CN");
         subject.AddStateOrProvinceName("Guangdong");
         subject.AddLocalityName("Shenzhen");
-        subject.AddOrganizationName(_dkl1Options.DeviceProvider);
-        subject.AddOrganizationalUnitName($"{_dkl1Options.Make}-{_dkl1Options.Model}");
-        subject.AddCommonName(_dkl1Options.SerialNo);
+        subject.AddOrganizationName(identity.Organization);
+        subject.AddOrganizationalUnitName($"{identity.Make}-{identity.Model}");
+        subject.AddCommonName(identity.SerialNo);
         return subject.Build();
     }
+
+    /// <summary>
+    /// 从当前设备的 digitalId 解析 DKL1 证书主题所需身份
+    /// </summary>
+    /// <exception cref="InvalidOperationException">设备不可用或 digitalId 不完整</exception>
+    private async Task<Dkl1Identity> ResolveDkl1IdentityAsync()
+    {
+        var device = SelectedDevice
+            ?? throw new InvalidOperationException("未选择设备，不能生成 DKL1 证书。");
+
+        IReadOnlyList<DiscoveryResponse> responses;
+        try
+        {
+            responses = await device.DiscoverAsync(
+                new DiscoveryRequest { Type = "Biometric Device" });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "读取设备 digitalId 失败：{DeviceId}", SelectedDeviceId);
+            throw new InvalidOperationException("无法读取设备 digitalId，不能生成 DKL1 证书。", exception);
+        }
+
+        var digitalId = responses
+            .Select(static response => response.DigitalId)
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+
+        if (!TryDecodeDigitalId(digitalId, out var identity))
+        {
+            throw new InvalidOperationException("设备 digitalId 不完整，不能生成 DKL1 证书。");
+        }
+
+        var organization = !string.IsNullOrWhiteSpace(identity.DeviceProvider)
+            ? identity.DeviceProvider
+            : GetOrganization(_certificateProvider.ProviderCertificate);
+
+        if (string.IsNullOrWhiteSpace(organization))
+        {
+            throw new InvalidOperationException("无法确定 Device Provider 组织，不能生成 DKL1 证书。");
+        }
+
+        return new Dkl1Identity(
+            identity.SerialNo!,
+            identity.Make!,
+            identity.Model!,
+            organization);
+    }
+
+    private static bool TryDecodeDigitalId(
+        string? encoded,
+        [NotNullWhen(true)] out DigitalId? identity)
+    {
+        identity = null;
+
+        if (string.IsNullOrWhiteSpace(encoded))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parts = encoded.Split('.');
+            var payload = parts.Length switch
+            {
+                1 => parts[0],
+                3 => parts[1],
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(payload))
+            {
+                return false;
+            }
+
+            var json = Encoding.UTF8.GetString(Base64UrlDecode(payload));
+            identity = JsonSerializer.Deserialize<DigitalId>(json);
+
+            return identity is not null
+                && !string.IsNullOrWhiteSpace(identity.SerialNo)
+                && !string.IsNullOrWhiteSpace(identity.Make)
+                && !string.IsNullOrWhiteSpace(identity.Model);
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
+        {
+            identity = null;
+            return false;
+        }
+    }
+
+    private static string? GetOrganization(X509Certificate2 certificate)
+    {
+        foreach (var rdn in certificate.SubjectName.EnumerateRelativeDistinguishedNames())
+        {
+            if (rdn.GetSingleElementType().Value == "2.5.4.10")
+            {
+                return rdn.GetSingleElementValue();
+            }
+        }
+
+        return null;
+    }
+
+    private static string DescribeIdentity(Dkl1Identity identity) =>
+        $"C=CN, ST=Guangdong, L=Shenzhen, O={identity.Organization}, " +
+        $"OU={identity.Make}-{identity.Model}, CN={identity.SerialNo}";
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var base64 = value.Replace('-', '+').Replace('_', '/');
+        base64 = (base64.Length % 4) switch
+        {
+            2 => base64 + "==",
+            3 => base64 + "=",
+            _ => base64
+        };
+
+        return Convert.FromBase64String(base64);
+    }
+
+    private sealed record Dkl1Identity(
+        string SerialNo,
+        string Make,
+        string Model,
+        string Organization);
 
     /// <summary>
     /// 导入设备返回的 SubjectPublicKeyInfo，并校验 DKL1 要求的 RSA-2048
@@ -603,16 +723,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllBytes(outputPath, certificateDer);
     }
-
-    private static bool IsDkl1Configured(Dkl1IssuerOptions options) =>
-        !string.IsNullOrWhiteSpace(options.SerialNo)
-        && !string.IsNullOrWhiteSpace(options.Make)
-        && !string.IsNullOrWhiteSpace(options.Model)
-        && !string.IsNullOrWhiteSpace(options.DeviceProvider);
-
-    private static string DescribeSubject(Dkl1IssuerOptions options) =>
-        $"C=CN, ST=Guangdong, L=Shenzhen, O={options.DeviceProvider}, " +
-        $"OU={options.Make}-{options.Model}, CN={options.SerialNo}";
 
     private static string ResolvePath(string path) =>
         Path.IsPathRooted(path)

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Device.Protocol;
 using SbiAuthenticationBridge.Device.Interop.ICT.FAP20;
@@ -29,9 +30,9 @@ public class FAP20 : IDevice
     public const uint DefaultCertificateTimeoutMs = 5_000;
 
     /// <summary>
-    /// 通用命令的默认超时
+    /// 通用命令的默认超时：与参考实现对齐，设备忙或刚复位时 1 秒易超时
     /// </summary>
-    public const uint DefaultTimeoutMs = 1_000;
+    public const uint DefaultTimeoutMs = 5_000;
 
     /// <summary>
     /// 采集命令的默认超时：需要等待用户放手指
@@ -42,6 +43,16 @@ public class FAP20 : IDevice
     /// 原生接口返回的设备忙/需复位状态码
     /// </summary>
     internal const int DeviceBusyResultCode = 0x75;
+
+    /// <summary>
+    /// libusb 传输超时返回值：设备通常仍在线，可由调用方重试
+    /// </summary>
+    public const int UsbTimeoutResultCode = -7;
+
+    /// <summary>
+    /// 二进制响应日志最多打印的字节数
+    /// </summary>
+    private const int RawBinaryLogBytes = 512;
 
     /// <summary>
     /// 收到 0x75 后自动软复位的超时
@@ -56,6 +67,11 @@ public class FAP20 : IDevice
     #endregion
 
     #region Fileds
+
+    /// <summary>
+    /// 清零用的响应缓冲区模板
+    /// </summary>
+    private static readonly byte[] ZeroResponseBuffer = new byte[ResponseBufferSize];
 
     /// <summary>
     /// 日志是否已初始化
@@ -76,6 +92,8 @@ public class FAP20 : IDevice
     /// USB 物理在线监测器
     /// </summary>
     private readonly UsbPresenceMonitor _presenceMonitor;
+
+    private readonly ILogger<FAP20>? _logger;
 
     /// <summary>
     /// 会话是否可用；物理断开时由监测器置为 false
@@ -99,13 +117,16 @@ public class FAP20 : IDevice
     /// </summary>
     /// <param name="vendorId">USB 厂商 ID，须与 FingerPrintDebug.INI 一致</param>
     /// <param name="productId">USB 产品 ID，须与 FingerPrintDebug.INI 一致</param>
-    public FAP20(ushort vendorId, ushort productId) : this(new UsbPresenceMonitor(vendorId, productId))
+    /// <param name="logger">日志记录器</param>
+    public FAP20(ushort vendorId, ushort productId, ILogger<FAP20>? logger = null) : this(
+        new UsbPresenceMonitor(vendorId, productId), logger)
     {
     }
 
-    public FAP20(UsbPresenceMonitor usbPresenceMonitor)
+    public FAP20(UsbPresenceMonitor usbPresenceMonitor, ILogger<FAP20>? logger = null)
     {
         _presenceMonitor = usbPresenceMonitor;
+        _logger = logger;
         _presenceMonitor.PresenceChanged += OnPresenceChanged;
         _presenceMonitor.Start();
     }
@@ -336,11 +357,12 @@ public class FAP20 : IDevice
         // 持有副本，避免调用方在异步执行期间复用或修改缓冲区
         var der = certificateDer.ToArray();
         var request = FtmProtocolCodec.EncodeLoadCertificate(der);
+        LogRequest("ftm_load_certificate", request);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(request.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -352,6 +374,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.LoadCertificate(_deviceHandle, requestPointer,
                         request.Length, responsePointer, timeoutMs);
+                    LogBinaryResponse("ftm_load_certificate", result, responsePointer, 34);
                     ThrowIfFailed(result, "ftm_load_certificate");
                 }
             }
@@ -384,11 +407,12 @@ public class FAP20 : IDevice
         ArgumentException.ThrowIfNullOrEmpty(callbackId);
 
         var request = FtmProtocolCodec.EncodeDiscover(callbackId, DateTimeOffset.UtcNow, deviceType);
+        LogRequest("ftm_discover", request);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(request.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -400,6 +424,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.Discover(_deviceHandle, requestPointer,
                         request.Length, responsePointer, timeoutMs);
+                    LogTextResponse("ftm_discover", result, Marshal.PtrToStringUTF8(responsePointer));
                     ThrowIfFailed(result, "ftm_discover");
                 }
 
@@ -430,11 +455,12 @@ public class FAP20 : IDevice
         ArgumentException.ThrowIfNullOrEmpty(callbackId);
 
         var request = FtmProtocolCodec.EncodeDeviceInfo(callbackId, DateTimeOffset.UtcNow);
+        LogRequest("ftm_get_device_info", request);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(request.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -446,6 +472,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.GetDeviceInfo(_deviceHandle, requestPointer,
                         request.Length, responsePointer, timeoutMs);
+                    LogTextResponse("ftm_get_device_info", result, Marshal.PtrToStringUTF8(responsePointer));
                     ThrowIfFailed(result, "ftm_get_device_info");
                 }
 
@@ -475,6 +502,7 @@ public class FAP20 : IDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var request = FtmProtocolCodec.EncodeSetTime(utc);
+        LogRequest("ftm_setTime", request);
 
         return Task.Run(() =>
         {
@@ -490,6 +518,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.SetTime(_deviceHandle, requestPointer,
                         request.Length, timeoutMs);
+                    LogResult("ftm_setTime", result);
                     ThrowIfFailed(result, "ftm_setTime");
                 }
             }
@@ -519,11 +548,12 @@ public class FAP20 : IDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var payload = FtmProtocolCodec.EncodeCapture(request, registration: false);
+        LogRequest("ftm_capture_auth", payload);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(payload.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -535,6 +565,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.CaptureAuth(_deviceHandle, requestPointer,
                         payload.Length, responsePointer, timeoutMs);
+                    LogTextResponse("ftm_capture_auth", result, Marshal.PtrToStringUTF8(responsePointer));
                     ThrowIfFailed(result, "ftm_capture_auth");
                 }
 
@@ -565,11 +596,12 @@ public class FAP20 : IDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var payload = FtmProtocolCodec.EncodeCapture(request, registration: true);
+        LogRequest("ftm_capture_reg", payload);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(payload.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -581,6 +613,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.CaptureReg(_deviceHandle, requestPointer,
                         payload.Length, responsePointer, timeoutMs);
+                    LogTextResponse("ftm_capture_reg", result, Marshal.PtrToStringUTF8(responsePointer));
                     ThrowIfFailed(result, "ftm_capture_reg");
                 }
 
@@ -609,11 +642,12 @@ public class FAP20 : IDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var request = FtmProtocolCodec.EncodeGetDklPublicKey();
+        LogRequest("ftm_get_dkl_public_key", request);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(request.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -625,6 +659,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.GetDklPublicKey(_deviceHandle, requestPointer,
                         request.Length, responsePointer, timeoutMs);
+                    LogBinaryResponse("ftm_get_dkl_public_key", result, responsePointer, RawBinaryLogBytes);
                     ThrowIfFailed(result, "ftm_get_dkl_public_key");
                 }
 
@@ -658,11 +693,12 @@ public class FAP20 : IDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var request = FtmProtocolCodec.EncodeSetDklCertificate(certificateDer.Span);
+        LogRequest("ftm_set_dkl_certificate", request);
 
         return Task.Run(() =>
         {
             var requestPointer = Marshal.AllocHGlobal(request.Length);
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -674,6 +710,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.SetDklCertificate(_deviceHandle, requestPointer,
                         request.Length, responsePointer, timeoutMs);
+                    LogBinaryResponse("ftm_set_dkl_certificate", result, responsePointer, 2);
                     ThrowIfFailed(result, "ftm_set_dkl_certificate");
                 }
 
@@ -705,6 +742,7 @@ public class FAP20 : IDevice
         }
 
         var payload = data.ToArray();
+        LogRequest("ftm_send", payload);
 
         return Task.Run(() =>
         {
@@ -720,6 +758,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.Send(_deviceHandle, requestPointer,
                         payload.Length, timeoutMs);
+                    LogResult("ftm_send", result);
                     ThrowIfFailed(result, "ftm_send");
                 }
             }
@@ -744,7 +783,7 @@ public class FAP20 : IDevice
 
         return Task.Run(() =>
         {
-            var responsePointer = Marshal.AllocHGlobal(ResponseBufferSize);
+            var responsePointer = AllocateResponseBuffer();
 
             try
             {
@@ -754,6 +793,7 @@ public class FAP20 : IDevice
 
                     var result = FtmNativeMethods.Recv(_deviceHandle, responsePointer,
                         ResponseBufferSize, timeoutMs);
+                    LogBinaryResponse("ftm_recv", result, responsePointer, RawBinaryLogBytes);
                     ThrowIfFailed(result, "ftm_recv");
                 }
 
@@ -786,7 +826,9 @@ public class FAP20 : IDevice
             {
                 EnsureConnected("ftm_setDevStatus");
 
+                LogRequest("ftm_setDevStatus", [(byte)status]);
                 var result = FtmNativeMethods.SetDevStatus(_deviceHandle, (byte)status, timeoutMs);
+                LogResult("ftm_setDevStatus", result);
                 ThrowIfFailed(result, "ftm_setDevStatus");
             }
         }, cancellationToken);
@@ -814,6 +856,7 @@ public class FAP20 : IDevice
                 EnsureConnected("ftm_device_reset");
 
                 var result = FtmNativeMethods.DeviceReset(_deviceHandle, timeoutMs);
+                LogResult("ftm_device_reset", result);
                 if (result != 0)
                 {
                     throw new InvalidOperationException(
@@ -835,8 +878,115 @@ public class FAP20 : IDevice
     }
 
     /// <summary>
+    /// 分配并清零响应缓冲区：SDK 不保证 NUL 结尾，残留旧数据会拼进 JSON
+    /// </summary>
+    /// <returns>已清零的非托管缓冲区</returns>
+    private static IntPtr AllocateResponseBuffer()
+    {
+        var pointer = Marshal.AllocHGlobal(ResponseBufferSize);
+        Marshal.Copy(ZeroResponseBuffer, 0, pointer, ResponseBufferSize);
+        return pointer;
+    }
+
+    #region 原始收发日志
+
+    /// <summary>
+    /// 记录原生命令请求 payload
+    /// </summary>
+    /// <param name="operation">原生命令名</param>
+    /// <param name="payload">紧凑二进制 payload</param>
+    private void LogRequest(string operation, ReadOnlySpan<byte> payload)
+    {
+        if (_logger is null || !_logger.IsEnabled(LogLevel.Debug))
+        {
+            return;
+        }
+
+        _logger.LogDebug(
+            "{Operation} 请求 {Length}B HEX={Payload}",
+            operation,
+            payload.Length,
+            Convert.ToHexString(payload));
+    }
+
+    /// <summary>
+    /// 记录文本响应
+    /// </summary>
+    /// <param name="operation">原生命令名</param>
+    /// <param name="resultCode">原生返回码</param>
+    /// <param name="response">响应文本</param>
+    private void LogTextResponse(string operation, int resultCode, string? response)
+    {
+        if (_logger is null || !_logger.IsEnabled(LogLevel.Debug))
+        {
+            return;
+        }
+
+        _logger.LogDebug(
+            "{Operation} 响应 rc=0x{ResultCode:X} TEXT={Response}",
+            operation,
+            resultCode,
+            response ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 记录二进制响应
+    /// </summary>
+    /// <param name="operation">原生命令名</param>
+    /// <param name="resultCode">原生返回码</param>
+    /// <param name="responsePointer">响应缓冲区</param>
+    /// <param name="length">响应有效长度</param>
+    private void LogBinaryResponse(string operation, int resultCode, IntPtr responsePointer, int length)
+    {
+        if (_logger is null || !_logger.IsEnabled(LogLevel.Debug))
+        {
+            return;
+        }
+
+        var size = Math.Clamp(length, 0, RawBinaryLogBytes);
+        var buffer = new byte[size];
+
+        if (size > 0)
+        {
+            Marshal.Copy(responsePointer, buffer, 0, size);
+        }
+
+        _logger.LogDebug(
+            "{Operation} 响应 rc=0x{ResultCode:X} {Length}B HEX={Payload}",
+            operation,
+            resultCode,
+            length,
+            Convert.ToHexString(buffer));
+
+        if (resultCode != 0)
+        {
+            _logger.LogDebug(
+                "{Operation} 错误响应 TEXT={Response}",
+                operation,
+                Marshal.PtrToStringUTF8(responsePointer) ?? string.Empty);
+        }
+    }
+
+    /// <summary>
+    /// 记录只有返回码的命令结果
+    /// </summary>
+    /// <param name="operation">原生命令名</param>
+    /// <param name="resultCode">原生返回码</param>
+    private void LogResult(string operation, int resultCode)
+    {
+        if (_logger is null || !_logger.IsEnabled(LogLevel.Debug))
+        {
+            return;
+        }
+
+        _logger.LogDebug("{Operation} 返回码 rc=0x{ResultCode:X}", operation, resultCode);
+    }
+
+    #endregion
+
+    /// <summary>
     /// 统一处理原生命令返回码：0x75 时尝试一次软复位，当前命令仍按失败处理；
-    /// 负数表示 USB 传输层失败，会话已不可信，直接释放句柄
+    /// -7 为传输超时，保留句柄供上层重试；其余负数表示会话不可信，释放句柄
     /// </summary>
     /// <remarks>调用方需持有 <see cref="_syncRoot"/>。</remarks>
     private void ThrowIfFailed(int result, string operation)
@@ -846,7 +996,14 @@ public class FAP20 : IDevice
             return;
         }
 
-        // 负数是 libusb/端口层的错误，设备可能已经重新枚举或传输通道失效，
+        // libusb 超时通常只是本次等待未完成，设备仍在线；关闭句柄会让后续采集全部失败
+        if (result == UsbTimeoutResultCode)
+        {
+            throw new FtmCommandException(operation, result,
+                $"{operation} 超时（{result}），设备仍在线，可重试。");
+        }
+
+        // 其余负数是 libusb/端口层的错误，设备可能已经重新枚举或传输通道失效，
         // 句柄不能再复用；关闭后 IsConnected 会返回 false，界面可如实显示为断开
         if (result < 0)
         {

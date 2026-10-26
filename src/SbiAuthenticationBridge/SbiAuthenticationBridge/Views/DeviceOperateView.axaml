@@ -84,21 +84,12 @@
                         <TextBlock FontWeight="SemiBold" Text="密钥轮换" />
                         <TextBlock
                             Opacity="0.7"
-                            Text="{Binding KeySubjectDescription}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            Opacity="0.7"
-                            Text="将使用 Device Provider 私钥签发新证书并写入设备，旧密钥会被原子替换。"
+                            Text="使用当前设备 digitalId 与 Device Provider 证书生成叶证书并写入设备，旧密钥会被原子替换。"
                             TextWrapping="Wrap" />
                         <Button
                             Command="{Binding RotateKeyCommand}"
                             Content="轮换密钥"
                             HorizontalAlignment="Left" />
-                        <TextBlock
-                            Foreground="#C62828"
-                            IsVisible="{Binding !IsKeyRotationConfigured}"
-                            Text="签发材料未配置，无法轮换密钥。"
-                            TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
