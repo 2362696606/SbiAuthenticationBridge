@@ -13,12 +13,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer>
         <StackPanel Margin="16" Spacing="12">
-            <TextBlock
-                FontSize="20"
-                FontWeight="SemiBold"
-                Text="设备操作" />
-            <TextBlock Opacity="0.65" Text="在左侧选择设备后执行操作。" />
-
             <Border
                 BorderBrush="#33808080"
                 BorderThickness="1"
@@ -37,27 +31,15 @@
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="12">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <StackPanel Spacing="2">
-                            <TextBlock FontWeight="SemiBold" Text="{Binding DeviceSummary}" />
-                            <TextBlock Opacity="0.7" Text="{Binding ConnectionText}" />
-                        </StackPanel>
-                        <ProgressBar
-                            Grid.Column="1"
-                            IsIndeterminate="True"
-                            IsVisible="{Binding IsBusy}"
-                            VerticalAlignment="Center"
-                            Width="120" />
-                    </Grid>
-                </Border>
-
-                <Border
-                    BorderBrush="#33808080"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="12">
                     <StackPanel Spacing="8">
-                        <TextBlock FontWeight="SemiBold" Text="连接" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock FontWeight="SemiBold" Text="连接" />
+                            <ProgressBar
+                                Grid.Column="1"
+                                IsIndeterminate="True"
+                                IsVisible="{Binding IsBusy}"
+                                Width="100" />
+                        </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Command="{Binding ConnectCommand}" Content="连接" />
                             <Button Command="{Binding DisconnectCommand}" Content="断开" />

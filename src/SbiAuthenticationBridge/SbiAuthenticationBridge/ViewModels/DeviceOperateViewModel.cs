@@ -134,7 +134,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     /// 设备是否已连接
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ConnectionText))]
     public partial bool IsConnected { get; set; }
 
     /// <summary>
@@ -163,20 +162,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     /// <summary>
-    /// 设备是否提供物理连接状态
-    /// </summary>
-    public bool HasConnectionState => SelectedDevice is IDevice;
-
-    /// <summary>
-    /// 连接状态文本
-    /// </summary>
-    public string ConnectionText => !HasConnectionState
-        ? "不适用"
-        : IsConnected
-            ? "已连接"
-            : "未连接";
-
-    /// <summary>
     /// 当前状态文本
     /// </summary>
     public string CurrentStatusText => CurrentStatus switch
@@ -186,17 +171,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         DeviceStatus.NotReady => "未就绪",
         DeviceStatus.NotRegistered => "未注册",
         _ => "未知"
-    };
-
-    /// <summary>
-    /// 当前设备类型描述
-    /// </summary>
-    public string DeviceSummary => SelectedDevice switch
-    {
-        null => "未选择设备",
-        ISbiAuthenticationDevice => "认证设备",
-        ISbiRegistrationDevice => "注册设备",
-        _ => "设备服务"
     };
 
     partial void OnSelectedDeviceChanged(ISbiDevice? value)
@@ -219,9 +193,6 @@ public partial class DeviceOperateViewModel : ViewModelBase, IDisposable
         IsConnected = device is IDevice { IsConnected: true };
         SelectedStatusOption = StatusOptions[0];
 
-        OnPropertyChanged(nameof(DeviceSummary));
-        OnPropertyChanged(nameof(HasConnectionState));
-        OnPropertyChanged(nameof(ConnectionText));
         NotifyCommandStates();
 
         _ = RefreshStateAsync();
