@@ -33,5 +33,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj" />
+      <ProjectReference Include="..\SbiAuthenticationBridge.Host\SbiAuthenticationBridge.Host.csproj" />
     </ItemGroup>
 </Project>

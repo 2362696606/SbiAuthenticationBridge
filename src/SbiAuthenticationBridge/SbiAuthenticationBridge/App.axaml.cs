@@ -12,6 +12,7 @@ using Prism.DryIoc;
 using Prism.Ioc;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Security;
+using SbiAuthenticationBridge.Host;
 using SbiAuthenticationBridge.Logging;
 using SbiAuthenticationBridge.Services;
 using SbiAuthenticationBridge.Views;
@@ -143,6 +144,7 @@ public class App : PrismApplication
             configuration.GetSection(Dkl1IssuerSection));
         _serviceCollection.AddSingleton<ICertificateProvider, FileCertificateProvider>();
         LoggingBootstrapper.Configure(_serviceCollection);
+        _serviceCollection.AddSbiHostServices();
         PlatformServiceRegistrations?.Invoke(_serviceCollection);
     }
 
