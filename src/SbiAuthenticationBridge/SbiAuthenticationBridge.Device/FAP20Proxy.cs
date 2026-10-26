@@ -315,7 +315,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var entry = bioEntries is null ? null : bioEntries[entryIndex];
+            var entry = bioEntries?[entryIndex];
             var captureCount = ResolveCaptureCount(entry);
             var loops = captureCount <= 9 ? captureCount : 1;
 
