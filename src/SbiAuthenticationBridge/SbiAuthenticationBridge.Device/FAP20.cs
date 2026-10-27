@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -309,7 +308,7 @@ public class FAP20 : IDevice
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] 物理断开后释放设备句柄失败：{exception}");
+            _logger?.LogWarning(exception, "物理断开后释放设备句柄失败");
         }
     }
 
@@ -385,7 +384,11 @@ public class FAP20 : IDevice
             }
 
             var fingerprint = Convert.ToHexString(SHA256.HashData(der));
-            Debug.WriteLine($"[FAP20] 证书已加载，{der.Length} 字节，SHA-256 {fingerprint}");
+            _logger?.LogDebug(
+                "证书已加载，{Length} 字节，SHA-256 {Fingerprint}",
+                der.Length,
+                fingerprint);
+
             return fingerprint;
         }, cancellationToken);
     }
@@ -1027,7 +1030,7 @@ public class FAP20 : IDevice
         var handle = _deviceHandle;
         if (handle == IntPtr.Zero)
         {
-            Debug.WriteLine($"[FAP20] {operation} 返回 0x75，但设备句柄为空，跳过软复位。");
+            _logger?.LogDebug("{Operation} 返回 0x75，但设备句柄为空，跳过软复位", operation);
             return false;
         }
 
@@ -1035,13 +1038,21 @@ public class FAP20 : IDevice
         {
             var resetResult = FtmNativeMethods.DeviceReset(handle, AutoResetTimeoutMs);
 
-            Debug.WriteLine(resetResult == 0
-                ? $"[FAP20] {operation} 返回 0x75，已执行软复位。"
-                : $"[FAP20] {operation} 返回 0x75，软复位失败，reset rc={resetResult}。");
+            if (resetResult == 0)
+            {
+                _logger?.LogDebug("{Operation} 返回 0x75，已执行软复位", operation);
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "{Operation} 返回 0x75，软复位失败，reset rc={ResetResult}",
+                    operation,
+                    resetResult);
+            }
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[FAP20] {operation} 返回 0x75，软复位异常：{exception}");
+            _logger?.LogWarning(exception, "{Operation} 返回 0x75，软复位异常", operation);
         }
 
         return true;

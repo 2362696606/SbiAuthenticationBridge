@@ -1045,8 +1045,7 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
 
             using var document = JsonDocument.Parse(payload);
             return document.RootElement.TryGetProperty("qualityScore", out var score)
-                   && score.ValueKind == JsonValueKind.Number
-                ? score.GetDouble()
+                ? ParseScore(score)
                 : 0;
         }
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
@@ -1054,6 +1053,22 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             return 0;
         }
     }
+
+    /// <summary>
+    /// 解析质量分：固件可能返回 JSON 数字，也可能返回字符串
+    /// </summary>
+    /// <param name="score">质量分节点</param>
+    /// <returns>解析结果；无法解析时为 0</returns>
+    private static double ParseScore(JsonElement score) => score.ValueKind switch
+    {
+        JsonValueKind.Number => score.GetDouble(),
+        JsonValueKind.String when double.TryParse(
+            score.GetString(),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var value) => value,
+        _ => 0,
+    };
 
     private static bool IsSuccess(BiometricInfo biometric) => IsSuccess(biometric.Error);
 
