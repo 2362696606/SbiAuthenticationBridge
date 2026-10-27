@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using SbiAuthenticationBridge.Core;
 using SbiAuthenticationBridge.Core.Common;
 using SbiAuthenticationBridge.Core.Dto;
@@ -65,6 +66,16 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// requestedScore=100 的超时用例在 SBI 超时后继续采集的时长
     /// </summary>
     private const int TimeoutTestExtraMs = 10_000;
+
+    /// <summary>
+    /// 采集截止前预留的响应余量，保证响应在 CTK 的 timeout 内到达
+    /// </summary>
+    private const int CaptureResponseMarginMs = 500;
+
+    /// <summary>
+    /// 预留响应余量的最小 timeout；更短的超时用例必须等满 timeout
+    /// </summary>
+    private const int MinTimeoutForResponseMarginMs = 2_000;
 
     /// <summary>
     /// 单次原生命令的最小超时，避免剩余时间过短导致调用立即失败
@@ -145,6 +156,11 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// </summary>
     private readonly ISbiHostContext _hostContext;
 
+    /// <summary>
+    /// 日志；未注入时静默
+    /// </summary>
+    private readonly ILogger<FAP20Proxy>? _logger;
+
     #endregion
 
     /// <summary>
@@ -152,13 +168,15 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     /// </summary>
     /// <param name="fap20">底层设备</param>
     /// <param name="hostContext">宿主上下文，提供当前回调标识</param>
-    public FAP20Proxy(FAP20 fap20, ISbiHostContext hostContext)
+    /// <param name="logger">日志</param>
+    public FAP20Proxy(FAP20 fap20, ISbiHostContext hostContext, ILogger<FAP20Proxy>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(fap20);
         ArgumentNullException.ThrowIfNull(hostContext);
 
         _fap20 = fap20;
         _hostContext = hostContext;
+        _logger = logger;
     }
 
     #region IDevice
@@ -395,12 +413,22 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
     }
 
     /// <summary>
-    /// 常规采集：在 SBI 超时前反复轮询，直到质量达标或固件返回错误
+    /// 常规采集：在 SBI 超时（预留响应余量）前反复轮询，直到质量达标或固件返回错误
     /// </summary>
     private async Task<BiometricInfo?> CaptureNormalAsync(FtmCaptureRequest request, int timeoutMs,
         int requestedScore, CancellationToken cancellationToken)
     {
-        var deadline = Environment.TickCount64 + timeoutMs;
+        // 长超时预留响应余量，避免响应越过 CTK 的 TimeCheck 窗口；
+        // 短超时（如 SBI1048 的 500ms）必须等满 timeout，否则 CTK 判“返回过早”
+        var budgetMs = timeoutMs >= MinTimeoutForResponseMarginMs
+            ? timeoutMs - CaptureResponseMarginMs
+            : timeoutMs;
+        var deadline = Environment.TickCount64 + budgetMs;
+        var startedAt = Environment.TickCount64;
+        var transactionId = request.TransactionId;
+        var polls = 0;
+        var noFrameCount = 0;
+        var lowQualityCount = 0;
 
         while (Environment.TickCount64 < deadline)
         {
@@ -409,22 +437,40 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             var remaining = deadline - Environment.TickCount64;
             var nativeTimeout = (uint)Math.Clamp(remaining, MinNativeTimeoutMs, CapturePollTimeoutMs);
 
+            polls++;
             var biometric = await TryCaptureOnceAsync(request, nativeTimeout, cancellationToken)
                 .ConfigureAwait(false);
 
             if (biometric is null)
             {
+                noFrameCount++;
                 await Task.Delay(CaptureRetryDelayMs, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
-            // 固件报错（除 101 外）直接透传；质量达标则接受，否则继续等待下一帧
-            if (!IsSuccess(biometric)
-                || (int)ExtractQualityScore(biometric.Data) >= requestedScore)
+            // 固件报错（除 101 外）直接透传
+            if (!IsSuccess(biometric))
             {
                 return biometric;
             }
+
+            var qualityScore = ExtractQualityScore(biometric.Data);
+            if ((int)qualityScore >= requestedScore)
+            {
+                var elapsedMs = Environment.TickCount64 - startedAt;
+                _logger?.LogInformation(
+                    "采集成功：transactionId={TransactionId}，轮询 {Polls} 次，质量分 {QualityScore}，耗时 {ElapsedMs} ms",
+                    transactionId, polls, qualityScore, elapsedMs);
+                return biometric;
+            }
+
+            lowQualityCount++;
         }
+
+        var totalElapsedMs = Environment.TickCount64 - startedAt;
+        _logger?.LogWarning(
+            "采集未达标：transactionId={TransactionId}，轮询 {Polls} 次，无有效帧 {NoFrameCount} 次，质量不足 {LowQualityCount} 次，阈值 {RequestedScore}，耗时 {ElapsedMs} ms",
+            transactionId, polls, noFrameCount, lowQualityCount, requestedScore, totalElapsedMs);
 
         return null;
     }

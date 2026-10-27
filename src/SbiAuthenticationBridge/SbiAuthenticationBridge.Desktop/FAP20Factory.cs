@@ -28,7 +28,8 @@ public class FAP20Factory : ISbiDeviceFactory
         var logger = container.Resolve<ILogger<FAP20>>();
         var fap20 = container.Resolve<FAP20>(args: [vendorId, productId, logger]);
         var context = container.Resolve<ISbiHostContext>();
-        var fap20Proxy = container.Resolve<FAP20Proxy>(args: [fap20, context]);
+        var proxyLogger = container.Resolve<ILogger<FAP20Proxy>>();
+        var fap20Proxy = container.Resolve<FAP20Proxy>(args: [fap20, context, proxyLogger]);
         return fap20Proxy;
     }
 
