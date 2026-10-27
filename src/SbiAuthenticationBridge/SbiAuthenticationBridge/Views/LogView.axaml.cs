@@ -43,6 +43,17 @@ public partial class LogView : UserControl
     /// </summary>
     private void OnScrollToEndRequested(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(LogScrollViewer.ScrollToEnd, DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(ScrollToEnd, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// 把列表滚动到最后一条日志
+    /// </summary>
+    private void ScrollToEnd()
+    {
+        if (LogList.ItemCount > 0)
+        {
+            LogList.ScrollIntoView(LogList.ItemCount - 1);
+        }
     }
 }

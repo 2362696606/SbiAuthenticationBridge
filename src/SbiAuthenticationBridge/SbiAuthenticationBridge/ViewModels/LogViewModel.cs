@@ -16,6 +16,11 @@ namespace SbiAuthenticationBridge.ViewModels;
 /// </summary>
 public partial class LogViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>
+    /// 单次 UI 刷新最多消费的日志条数，剩余条目留到下一轮
+    /// </summary>
+    private const int MaxDrainPerPass = 500;
+
     private readonly ILogEntryStore _store;
 
     /// <summary>
@@ -194,9 +199,12 @@ public partial class LogViewModel : ViewModelBase, IDisposable
         }
 
         var appended = false;
+        var drained = 0;
 
-        while (_pending.TryDequeue(out var entry))
+        while (drained < MaxDrainPerPass && _pending.TryDequeue(out var entry))
         {
+            drained++;
+
             if (!Matches(entry))
             {
                 continue;
