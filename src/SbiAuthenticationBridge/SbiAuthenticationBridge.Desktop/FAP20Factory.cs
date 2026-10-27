@@ -26,7 +26,8 @@ public class FAP20Factory : ISbiDeviceFactory
         var (vendorId, productId) = ReadDeviceId(configuration);
         var container = _containerProvider.GetContainer();
         var logger = container.Resolve<ILogger<FAP20>>();
-        var fap20 = container.Resolve<FAP20>(args: [vendorId, productId, logger]);
+        var opener = new WindowsFtmDeviceOpener(vendorId, productId);
+        var fap20 = container.Resolve<FAP20>(args: [opener, logger]);
         var context = container.Resolve<ISbiHostContext>();
         var proxyLogger = container.Resolve<ILogger<FAP20Proxy>>();
         var fap20Proxy = container.Resolve<FAP20Proxy>(args: [fap20, context, proxyLogger]);

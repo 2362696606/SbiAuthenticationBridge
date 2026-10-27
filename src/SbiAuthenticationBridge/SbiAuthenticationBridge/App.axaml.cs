@@ -60,6 +60,11 @@ public class App : PrismApplication
     public Action<IServiceCollection>? PlatformServiceRegistrations { get; set; }
 
     /// <summary>
+    /// 组合根初始化完成后的平台回调，用于把容器交给平台宿主
+    /// </summary>
+    public Action<IServiceProvider>? PlatformReady { get; set; }
+
+    /// <summary>
     /// 窗体工厂方法
     /// </summary>
     public Func<AvaloniaObject>? ShellFactory { get; set; }
@@ -78,6 +83,8 @@ public class App : PrismApplication
         }
 
         base.OnFrameworkInitializationCompleted();
+
+        PlatformReady?.Invoke(Container.GetContainer());
     }
 
     /// <summary>

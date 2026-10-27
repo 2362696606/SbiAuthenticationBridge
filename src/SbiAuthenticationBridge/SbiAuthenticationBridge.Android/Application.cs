@@ -5,6 +5,9 @@ using Android.Runtime;
 using Avalonia;
 using Avalonia.Android;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using SbiAuthenticationBridge.Device.Android;
+using SbiAuthenticationBridge.Host.Intent;
 
 namespace SbiAuthenticationBridge.Android
 {
@@ -23,8 +26,22 @@ namespace SbiAuthenticationBridge.Android
         protected override AppBuilder CreateAppBuilder()
         {
             return AppBuilder
-                .Configure(() => new App { AddPlatformConfiguration = ConfigureConfiguration })
+                .Configure(() => new App
+                {
+                    AddPlatformConfiguration = ConfigureConfiguration,
+                    PlatformServiceRegistrations = ConfigureServices,
+                    PlatformReady = SbiIntentBridge.Initialize
+                })
                 .UseAndroid();
+        }
+
+        /// <summary>
+        /// 注册 Android 设备与 Intent 宿主服务
+        /// </summary>
+        private static void ConfigureServices(IServiceCollection services)
+        {
+            services.AddSbiAndroidDevice();
+            services.AddSbiIntentServices(SbiIntentAppId.Value);
         }
 
         protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)

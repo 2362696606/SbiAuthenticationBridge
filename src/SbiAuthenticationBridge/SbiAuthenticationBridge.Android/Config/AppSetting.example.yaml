@@ -24,3 +24,8 @@ Dkl1Issuer:
 
   # 可选：签发后的证书保存路径
   issuedCertificatePath: "device-provider/dkl1_device.cer"
+
+Device:
+  # FAP20 的 USB VID/PID，须与设备一致；支持 0x 十六进制、0 八进制与十进制
+  vendorId: "0x0483"
+  productId: "0x5725"

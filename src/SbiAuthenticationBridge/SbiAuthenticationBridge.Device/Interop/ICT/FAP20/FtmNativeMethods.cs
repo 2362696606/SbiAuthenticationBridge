@@ -21,6 +21,16 @@ internal static partial class FtmNativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial IntPtr Open();
 
+    /// <summary>对应 ftm_open_fd：用平台已打开的 USB 文件描述符初始化设备（Android）</summary>
+    [LibraryImport(LibraryName, EntryPoint = "ftm_open_fd")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial IntPtr OpenFd(int fileDescriptor);
+
+    /// <summary>对应 ftm_log_init_path：指定日志文件路径与等级，须在打开设备前调用</summary>
+    [LibraryImport(LibraryName, EntryPoint = "ftm_log_init_path", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void LogInitPath(string path, int level);
+
     /// <summary>对应 ftm_discover：探测设备在线状态与基本能力，请求为 DISCOVER(0x01) 紧凑二进制 payload</summary>
     [LibraryImport(LibraryName, EntryPoint = "ftm_discover")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

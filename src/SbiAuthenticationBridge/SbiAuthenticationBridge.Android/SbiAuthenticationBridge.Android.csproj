@@ -26,6 +26,8 @@
 
     <ItemGroup>
         <ProjectReference Include="..\SbiAuthenticationBridge\SbiAuthenticationBridge.csproj"/>
+        <ProjectReference Include="..\SbiAuthenticationBridge.Device.Android\SbiAuthenticationBridge.Device.Android.csproj"/>
+        <ProjectReference Include="..\SbiAuthenticationBridge.Host.Intent\SbiAuthenticationBridge.Host.Intent.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

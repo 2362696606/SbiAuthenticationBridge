@@ -18,6 +18,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Hos
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Device", "SbiAuthenticationBridge.Device\SbiAuthenticationBridge.Device.csproj", "{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Device.Android", "SbiAuthenticationBridge.Device.Android\SbiAuthenticationBridge.Device.Android.csproj", "{C4A1F3D2-8B7E-4E59-9A21-5D6F0C3B7E84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Host.Intent", "SbiAuthenticationBridge.Host.Intent\SbiAuthenticationBridge.Host.Intent.csproj", "{8D5B2C61-4F0A-4D77-8E33-7B9A1C6D24F5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -64,5 +68,13 @@ Global
 		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B9CE3135-2BF1-4499-8D52-4A9BB1132C6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C4A1F3D2-8B7E-4E59-9A21-5D6F0C3B7E84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C4A1F3D2-8B7E-4E59-9A21-5D6F0C3B7E84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C4A1F3D2-8B7E-4E59-9A21-5D6F0C3B7E84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C4A1F3D2-8B7E-4E59-9A21-5D6F0C3B7E84}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D5B2C61-4F0A-4D77-8E33-7B9A1C6D24F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D5B2C61-4F0A-4D77-8E33-7B9A1C6D24F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D5B2C61-4F0A-4D77-8E33-7B9A1C6D24F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D5B2C61-4F0A-4D77-8E33-7B9A1C6D24F5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

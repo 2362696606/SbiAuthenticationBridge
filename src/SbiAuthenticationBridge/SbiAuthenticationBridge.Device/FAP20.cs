@@ -88,9 +88,14 @@ public class FAP20 : IDevice
     private readonly object _syncRoot = new();
 
     /// <summary>
-    /// USB 物理在线监测器
+    /// 串行化连接流程，避免并发打开产生多个句柄
     /// </summary>
-    private readonly UsbPresenceMonitor _presenceMonitor;
+    private readonly SemaphoreSlim _connectGate = new(1, 1);
+
+    /// <summary>
+    /// 平台提供的设备打开与在线监测
+    /// </summary>
+    private readonly IFtmDeviceOpener _deviceOpener;
 
     private readonly ILogger<FAP20>? _logger;
 
@@ -114,20 +119,16 @@ public class FAP20 : IDevice
     /// <summary>
     /// 创建 FAP20 设备实例
     /// </summary>
-    /// <param name="vendorId">USB 厂商 ID，须与 FingerPrintDebug.INI 一致</param>
-    /// <param name="productId">USB 产品 ID，须与 FingerPrintDebug.INI 一致</param>
+    /// <param name="deviceOpener">平台提供的设备打开与在线监测</param>
     /// <param name="logger">日志记录器</param>
-    public FAP20(ushort vendorId, ushort productId, ILogger<FAP20>? logger = null) : this(
-        new UsbPresenceMonitor(vendorId, productId), logger)
+    public FAP20(IFtmDeviceOpener deviceOpener, ILogger<FAP20>? logger = null)
     {
-    }
+        ArgumentNullException.ThrowIfNull(deviceOpener);
 
-    public FAP20(UsbPresenceMonitor usbPresenceMonitor, ILogger<FAP20>? logger = null)
-    {
-        _presenceMonitor = usbPresenceMonitor;
+        _deviceOpener = deviceOpener;
         _logger = logger;
-        _presenceMonitor.PresenceChanged += OnPresenceChanged;
-        _presenceMonitor.Start();
+        _deviceOpener.PresenceChanged += OnPresenceChanged;
+        _deviceOpener.Start();
     }
 
     #region AsyncDispose
@@ -148,19 +149,20 @@ public class FAP20 : IDevice
         }
 
         _disposed = true;
-        _presenceMonitor.PresenceChanged -= OnPresenceChanged;
+        _deviceOpener.PresenceChanged -= OnPresenceChanged;
 
         try
         {
-            await _presenceMonitor.DisposeAsync().ConfigureAwait(false);
-        }
-        finally
-        {
+            // 先关闭 SDK 句柄，再释放平台连接（Android 的 fd 属于 UsbDeviceConnection）
             lock (_syncRoot)
             {
                 CloseDevice();
             }
 
+            await _deviceOpener.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
             GC.SuppressFinalize(this);
         }
     }
@@ -178,7 +180,8 @@ public class FAP20 : IDevice
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        await Task.Run(() =>
+        await _connectGate.WaitAsync().ConfigureAwait(false);
+        try
         {
             lock (_syncRoot)
             {
@@ -189,32 +192,33 @@ public class FAP20 : IDevice
                 {
                     return;
                 }
+            }
 
-                if (!_presenceMonitor.Refresh())
-                {
-                    throw new InvalidOperationException("FAP20 设备未插入（USB 物理连接不存在），无法连接。");
-                }
+            if (!_deviceOpener.Refresh())
+            {
+                throw new InvalidOperationException("FAP20 设备未插入（USB 物理连接不存在），无法连接。");
+            }
 
-                // 物理断开后旧句柄可能已经失效，先释放再重新打开
+            // 物理断开后旧句柄可能已经失效，先释放再重新打开
+            lock (_syncRoot)
+            {
                 CloseDevice();
+                InitLogIfNeeded();
+            }
 
-                if (!_logInitialized)
-                {
-                    FtmNativeMethods.LogInit((int)FtmLogLevel.Warn);
-                    _logInitialized = true;
-                }
+            var handle = await _deviceOpener.OpenAsync().ConfigureAwait(false);
+            if (handle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("打开 FAP20 设备失败，请检查设备连接及 ftmBridgeAPI 依赖是否可加载。");
+            }
 
-                var handle = FtmNativeMethods.Open();
-                if (handle == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException("打开 FAP20 设备失败，请检查设备连接及 ftmBridgeAPI 依赖是否可加载。");
-                }
-
+            lock (_syncRoot)
+            {
                 _deviceHandle = handle;
                 _handleGeneration++;
 
                 // 打开过程中也可能被拔出
-                if (_disposed || !_presenceMonitor.Refresh())
+                if (_disposed || !_deviceOpener.Refresh())
                 {
                     CloseDevice();
                     throw new InvalidOperationException("设备在连接过程中被拔出或已释放。");
@@ -222,7 +226,11 @@ public class FAP20 : IDevice
 
                 _isConnected = true;
             }
-        }).ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectGate.Release();
+        }
     }
 
     /// <summary>
@@ -248,7 +256,30 @@ public class FAP20 : IDevice
     /// <summary>
     /// 操作系统当前是否识别到该 USB 设备
     /// </summary>
-    public bool IsPhysicallyConnected => _presenceMonitor.IsPresent;
+    public bool IsPhysicallyConnected => _deviceOpener.IsPresent;
+
+    /// <summary>
+    /// 按平台提供的日志路径初始化 SDK 日志；调用方需持有 <see cref="_syncRoot"/>
+    /// </summary>
+    private void InitLogIfNeeded()
+    {
+        if (_logInitialized)
+        {
+            return;
+        }
+
+        var logPath = _deviceOpener.LogFilePath;
+        if (string.IsNullOrWhiteSpace(logPath))
+        {
+            FtmNativeMethods.LogInit((int)FtmLogLevel.Warn);
+        }
+        else
+        {
+            FtmNativeMethods.LogInitPath(logPath, (int)FtmLogLevel.Warn);
+        }
+
+        _logInitialized = true;
+    }
 
     /// <summary>
     /// 关闭设备并复位句柄，调用方需持有 <see cref="_syncRoot"/>
