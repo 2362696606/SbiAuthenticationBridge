@@ -87,7 +87,6 @@ internal static class SbiIntentBridge
         }
 
         await StartServiceAsync(services.GetService<ISbiAuthenticationService>()).ConfigureAwait(false);
-        await StartServiceAsync(services.GetService<ISbiRegistrationService>()).ConfigureAwait(false);
     }
 
     private static async Task StartServiceAsync(ISbiService? service)

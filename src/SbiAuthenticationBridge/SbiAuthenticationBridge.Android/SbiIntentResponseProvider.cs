@@ -44,7 +44,8 @@ public sealed class SbiIntentResponseProvider : ContentProvider
         return ParcelFileDescriptor.Open(
             new File(path),
             ParcelFileMode.ReadOnly,
-            null,
+            // 带关闭监听时平台要求 Handler 非空，否则抛 "Handler must not be null"
+            new Handler(Looper.MainLooper!),
             new DeleteOnCloseListener(path));
     }
 

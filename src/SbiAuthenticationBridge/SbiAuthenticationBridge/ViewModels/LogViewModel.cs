@@ -46,8 +46,6 @@ public partial class LogViewModel : ViewModelBase, IDisposable
         _store = store;
         LevelOptions =
         [
-            new LogLevelOption(LogLevel.Trace, "全部"),
-            new LogLevelOption(LogLevel.Debug, "Debug"),
             new LogLevelOption(LogLevel.Information, "Information"),
             new LogLevelOption(LogLevel.Warning, "Warning"),
             new LogLevelOption(LogLevel.Error, "Error"),

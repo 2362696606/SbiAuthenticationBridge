@@ -8,7 +8,7 @@ using SbiAuthenticationBridge.Core.Dto;
 namespace SbiAuthenticationBridge.Host.Intent;
 
 /// <summary>
-/// 把 Intent action 分发到认证/注册 ServiceHandle
+/// 把 Intent action 分发到认证 ServiceHandle
 /// </summary>
 internal sealed class SbiIntentDispatcher : ISbiIntentDispatcher
 {
@@ -74,28 +74,22 @@ internal sealed class SbiIntentDispatcher : ISbiIntentDispatcher
     /// </summary>
     private Task<SbiIntentResult> RouteAsync(string action, byte[] input, CancellationToken cancellationToken)
     {
-        if (action == SbiIntentProtocol.DiscoveryAction)
+        switch (SbiIntentProtocol.Classify(action, _options.AppId))
         {
-            return DiscoverAsync(input, cancellationToken);
-        }
+            case SbiIntentActionKind.Discovery:
+                return DiscoverAsync(input, cancellationToken);
 
-        if (action == SbiIntentProtocol.InfoAction(_options.AppId))
-        {
-            return GetDeviceInfoAsync(cancellationToken);
-        }
+            case SbiIntentActionKind.Info:
+                return GetDeviceInfoAsync(cancellationToken);
 
-        if (action == SbiIntentProtocol.CaptureAction(_options.AppId))
-        {
-            return CaptureAsync(action, input, cancellationToken);
-        }
+            case SbiIntentActionKind.Capture:
+                return CaptureAsync(action, input, cancellationToken);
 
-        if (action == SbiIntentProtocol.RecaptureAction(_options.AppId))
-        {
-            return RecaptureAsync(action, input, cancellationToken);
+            default:
+                _logger.LogWarning("不支持的 SBI Intent action：{Action}", action);
+                return Task.FromResult(
+                    CreateErrorResult(action, SbiErrorHelper.TechnicalErrorDuringExtraction));
         }
-
-        _logger.LogWarning("不支持的 SBI Intent action：{Action}", action);
-        return Task.FromResult(CreateErrorResult(action, SbiErrorHelper.TechnicalErrorDuringExtraction));
     }
 
     private async Task<SbiIntentResult> DiscoverAsync(byte[] input, CancellationToken cancellationToken)
@@ -105,10 +99,6 @@ internal sealed class SbiIntentDispatcher : ISbiIntentDispatcher
 
         responses.AddRange(await _services
             .GetRequiredService<ISbiAuthenticationServiceHandle>()
-            .DiscoverAsync(request, cancellationToken)
-            .ConfigureAwait(false));
-        responses.AddRange(await _services
-            .GetRequiredService<ISbiRegistrationServiceHandle>()
             .DiscoverAsync(request, cancellationToken)
             .ConfigureAwait(false));
 
@@ -121,10 +111,6 @@ internal sealed class SbiIntentDispatcher : ISbiIntentDispatcher
 
         responses.AddRange(await _services
             .GetRequiredService<ISbiAuthenticationServiceHandle>()
-            .GetDeviceInfoAsync(cancellationToken)
-            .ConfigureAwait(false));
-        responses.AddRange(await _services
-            .GetRequiredService<ISbiRegistrationServiceHandle>()
             .GetDeviceInfoAsync(cancellationToken)
             .ConfigureAwait(false));
 
@@ -144,25 +130,6 @@ internal sealed class SbiIntentDispatcher : ISbiIntentDispatcher
 
         var response = await _services
             .GetRequiredService<ISbiAuthenticationServiceHandle>()
-            .CaptureAsync(request, cancellationToken)
-            .ConfigureAwait(false);
-
-        return SbiIntentResult.Content(SerializeToText(response));
-    }
-
-    private async Task<SbiIntentResult> RecaptureAsync(string action, byte[] input,
-        CancellationToken cancellationToken)
-    {
-        if (!IsRunning<ISbiRegistrationService>())
-        {
-            return CreateErrorResult(action, SbiErrorHelper.DeviceNotReady);
-        }
-
-        var request = Deserialize<CaptureRequest>(input)
-            ?? throw new InvalidOperationException("RCAPTURE 请求体为空。");
-
-        var response = await _services
-            .GetRequiredService<ISbiRegistrationServiceHandle>()
             .CaptureAsync(request, cancellationToken)
             .ConfigureAwait(false);
 

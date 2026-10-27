@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -35,9 +34,7 @@ public static class SbiAndroidDeviceServiceCollectionExtensions
                 provider.GetRequiredService<ILoggerFactory>()
                     .CreateLogger("Fap20Android")
                     .LogWarning(
-                        "未配置 {Section}:vendorId / {Section}:productId，Android 端不创建设备。",
-                        AndroidFap20Options.SectionName,
-                        AndroidFap20Options.SectionName);
+                        "未配置 Device:vendorId / Device:productId，Android 端不创建设备。");
 
                 return new AndroidFap20DeviceProvider(null);
             }

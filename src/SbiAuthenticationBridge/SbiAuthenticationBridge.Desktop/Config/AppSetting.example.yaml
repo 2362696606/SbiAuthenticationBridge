@@ -16,11 +16,5 @@ CertificateProvider:
   # domainEncryptionCertificatePath: "device-provider/domain_encryption.cert.der"
 
 Dkl1Issuer:
-  # 叶证书 Subject 字段
-  serialNo: "123456789012"
-  make: "CCM"
-  model: "CCM4201S"
-  deviceProvider: "FTM-Test"
-
   # 可选：签发后的证书保存路径
   issuedCertificatePath: "device-provider/dkl1_device.cer"

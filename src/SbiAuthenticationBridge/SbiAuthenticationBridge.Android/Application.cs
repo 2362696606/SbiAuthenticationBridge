@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Android.App;
 using Android.Runtime;
+using Android.Util;
 using Avalonia;
 using Avalonia.Android;
 using Microsoft.Extensions.Configuration;
@@ -14,7 +15,20 @@ namespace SbiAuthenticationBridge.Android
     [Application]
     public class Application : AvaloniaAndroidApplication<App>
     {
+        /// <summary>
+        /// 配置文件名
+        /// </summary>
         private const string AppSettingFileName = "AppSetting.yaml";
+
+        /// <summary>
+        /// APK 内置配置的 asset 路径
+        /// </summary>
+        private const string AppSettingAssetPath = "Config/AppSetting.yaml";
+
+        /// <summary>
+        /// 平台日志标签
+        /// </summary>
+        private const string LogTag = "SbiConfig";
 
         protected Application(nint javaReference, JniHandleOwnership transfer) : base(javaReference, transfer)
         {
@@ -53,9 +67,38 @@ namespace SbiAuthenticationBridge.Android
         private void ConfigureConfiguration(IConfigurationBuilder builder)
         {
             var directory = FilesDir?.AbsolutePath ?? AppContext.BaseDirectory;
+            var path = Path.Combine(directory, AppSettingFileName);
 
-            builder.AddYamlFile(Path.Combine(directory, AppSettingFileName),
-                optional: true, reloadOnChange: false);
+            EnsureConfigurationFile(path);
+            builder.AddYamlFile(path, optional: true, reloadOnChange: false);
+        }
+
+        /// <summary>
+        /// 首次启动时把 APK 内置配置复制到应用私有目录
+        /// </summary>
+        /// <param name="path">目标配置文件路径</param>
+        private void EnsureConfigurationFile(string path)
+        {
+            if (File.Exists(path))
+            {
+                return;
+            }
+
+            try
+            {
+                using var asset = Assets?.Open(AppSettingAssetPath);
+                if (asset is null)
+                {
+                    return;
+                }
+
+                using var target = File.Create(path);
+                asset.CopyTo(target);
+            }
+            catch (Exception exception) when (exception is IOException or Java.IO.IOException)
+            {
+                Log.Warn(LogTag, $"从 APK 复制默认配置失败：{exception.Message}");
+            }
         }
     }
 }

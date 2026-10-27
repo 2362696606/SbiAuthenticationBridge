@@ -30,17 +30,22 @@ internal static class SbiIntentAppId
     public const string ResponseAuthority = Value + ".sbi.responses";
 
     /// <summary>
-    /// 设备信息 action
+    /// 设备信息 action（SBI 0.9.5：<c>appId:Info</c>）
     /// </summary>
-    public const string InfoAction = Value + ".Info";
+    public const string InfoAction = Value + ":Info";
 
     /// <summary>
-    /// 认证采集 action
+    /// 设备信息 action 草案写法
     /// </summary>
-    public const string CaptureAction = Value + ".Capture";
+    public const string InfoCompatAction = Value + ".Info";
 
     /// <summary>
-    /// 注册采集 action
+    /// 认证采集 action（SBI 0.9.5：<c>appId.capture</c>）
     /// </summary>
-    public const string RecaptureAction = Value + ".rCapture";
+    public const string CaptureAction = Value + ".capture";
+
+    /// <summary>
+    /// 认证采集 action 草案写法
+    /// </summary>
+    public const string CaptureCompatAction = Value + ".Capture";
 }

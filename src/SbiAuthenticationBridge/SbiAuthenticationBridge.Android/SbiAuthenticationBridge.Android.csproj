@@ -31,8 +31,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="Config\AppSetting.yaml">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+      <!--  本地配置不入库；打包为 APK asset，首次启动时复制到应用私有目录  -->
+      <AndroidAsset Include="Config\AppSetting.yaml" Condition="Exists('Config\AppSetting.yaml')" />
     </ItemGroup>
 </Project>

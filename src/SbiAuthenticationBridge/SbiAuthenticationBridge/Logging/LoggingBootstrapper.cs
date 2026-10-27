@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
+using Serilog.Events;
 
 namespace SbiAuthenticationBridge.Logging;
 
@@ -39,7 +40,8 @@ internal static class LoggingBootstrapper
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .Enrich.FromLogContext()
-            .WriteTo.Sink(new SerilogLogEntrySink(store))
+            // 视图内存缓冲只看 Information 及以上，Debug 仅写入文件与控制台
+            .WriteTo.Sink(new SerilogLogEntrySink(store), restrictedToMinimumLevel: LogEventLevel.Information)
             .WriteTo.Async(
                 sink => sink.File(
                     path: logFilePath,

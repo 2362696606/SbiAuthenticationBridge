@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Hardware.Usb;
@@ -64,7 +60,7 @@ internal sealed class AndroidFtmDeviceOpener : IFtmDeviceOpener
         _vendorId = vendorId;
         _productId = productId;
         _logger = logger;
-        _context = global::Android.App.Application.Context;
+        _context = Application.Context;
         _usbManager = (UsbManager?)_context.GetSystemService(Context.UsbService)
             ?? throw new InvalidOperationException("当前设备不支持 USB Host。");
         _permissionAction = _context.PackageName + PermissionActionSuffix;
@@ -246,14 +242,14 @@ internal sealed class AndroidFtmDeviceOpener : IFtmDeviceOpener
             // Android 12 起系统需要向 PendingIntent 回填授权结果，必须可修改
             var flags = OperatingSystem.IsAndroidVersionAtLeast(31)
                 ? PendingIntentFlags.Mutable
-                : (PendingIntentFlags)0;
+                : 0;
             var pendingIntent = PendingIntent.GetBroadcast(_context, 0, intent, flags)
                 ?? throw new InvalidOperationException("创建 USB 权限 PendingIntent 失败。");
 
             _usbManager.RequestPermission(device, pendingIntent);
 
             using var timeout = new CancellationTokenSource(PermissionTimeoutMs);
-            using var registration = timeout.Token.Register(() => completion.TrySetResult(false));
+            await using var registration = timeout.Token.Register(() => completion.TrySetResult(false));
             return await completion.Task.ConfigureAwait(false);
         }
         finally

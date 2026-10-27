@@ -22,13 +22,15 @@ public static class SbiIntentErrorResponse
     /// <returns>内联响应结果</returns>
     public static SbiIntentResult Create(string action, string appId, SbiError error)
     {
-        if (action == SbiIntentProtocol.DiscoveryAction)
+        var kind = SbiIntentProtocol.Classify(action, appId);
+
+        if (kind == SbiIntentActionKind.Discovery)
         {
             return SbiIntentResult.Inline(Serialize(
                 new List<DiscoveryResponse> { new() { Error = error } }));
         }
 
-        if (action == SbiIntentProtocol.InfoAction(appId))
+        if (kind == SbiIntentActionKind.Info)
         {
             return SbiIntentResult.Inline(Serialize(
                 new List<DeviceInfoResponse> { new() { Error = error } }));

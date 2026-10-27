@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SbiAuthenticationBridge.Core;
@@ -50,6 +49,14 @@ internal sealed class AndroidFap20DeviceFactory : ISbiDeviceFactory
             options.VendorId,
             options.ProductId,
             _loggerFactory.CreateLogger<AndroidFtmDeviceOpener>());
+
+        _loggerFactory
+            .CreateLogger<AndroidFap20DeviceFactory>()
+            .LogInformation(
+                "创建 Android FAP20 设备：VID=0x{VendorId:X4}，PID=0x{ProductId:X4}",
+                options.VendorId,
+                options.ProductId);
+
         var fap20 = new FAP20(opener, _loggerFactory.CreateLogger<FAP20>());
         var proxy = new FAP20Proxy(
             fap20,

@@ -9,11 +9,10 @@ namespace SbiAuthenticationBridge.Host.Intent;
 public static class SbiIntentServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册认证与注册两个 Intent 宿主服务
+    /// 注册认证 Intent 宿主服务
     /// </summary>
     /// <remarks>
-    /// 每个实现同时注册为宿主无关的用途接口，两者解析到同一实例；
-    /// 不直接注册 <see cref="ISbiService"/>，避免两个用途注入歧义。
+    /// Android CTK 不支持注册采集，因此不注册注册用途的宿主服务。
     /// </remarks>
     /// <param name="services">服务集合</param>
     /// <param name="appId">Android appId（包名），同时作为 callbackId</param>
@@ -29,10 +28,6 @@ public static class SbiIntentServiceCollectionExtensions
         services.AddSingleton<SbiAuthenticationIntentService>();
         services.AddSingleton<ISbiAuthenticationService>(
             provider => provider.GetRequiredService<SbiAuthenticationIntentService>());
-
-        services.AddSingleton<SbiRegistrationIntentService>();
-        services.AddSingleton<ISbiRegistrationService>(
-            provider => provider.GetRequiredService<SbiRegistrationIntentService>());
 
         return services;
     }

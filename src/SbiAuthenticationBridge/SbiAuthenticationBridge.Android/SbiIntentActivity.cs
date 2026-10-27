@@ -17,16 +17,32 @@ namespace SbiAuthenticationBridge.Android;
 [Activity(
     Name = SbiIntentAppId.ActivityName,
     Exported = true,
+    ExcludeFromRecents = true,
+    NoHistory = true,
     LaunchMode = LaunchMode.SingleTop,
-    Theme = "@style/MyTheme.NoActionBar",
-    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
-[IntentFilter([SbiIntentProtocol.DiscoveryAction], DataMimeType = "application/json")]
-[IntentFilter([SbiIntentAppId.InfoAction], DataMimeType = "application/json")]
-[IntentFilter([SbiIntentAppId.CaptureAction], DataMimeType = "application/json")]
-[IntentFilter([SbiIntentAppId.RecaptureAction], DataMimeType = "application/json")]
+    Theme = "@android:style/Theme.Translucent.NoTitleBar")]
+[IntentFilter(
+    new[]
+    {
+        SbiIntentProtocol.DiscoveryCompatAction,
+        SbiIntentProtocol.DiscoveryAction,
+        SbiIntentAppId.InfoCompatAction,
+        SbiIntentAppId.InfoAction,
+        SbiIntentAppId.CaptureCompatAction,
+        SbiIntentAppId.CaptureAction
+    },
+    Categories = new[] { DefaultCategory })]
 public sealed class SbiIntentActivity : Activity
 {
+    /// <summary>
+    /// 日志标签
+    /// </summary>
     private const string LogTag = "SbiIntent";
+
+    /// <summary>
+    /// 默认分类：PackageManager 按 MATCH_DEFAULT_ONLY 查询时必需
+    /// </summary>
+    private const string DefaultCategory = "android.intent.category.DEFAULT";
 
     /// <inheritdoc />
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -50,6 +66,8 @@ public sealed class SbiIntentActivity : Activity
         var action = intent?.Action;
         var result = new AndroidIntent();
 
+        Log.Info(LogTag, $"收到 SBI Intent：action={action}");
+
         try
         {
             if (string.IsNullOrEmpty(action))
@@ -67,7 +85,12 @@ public sealed class SbiIntentActivity : Activity
                     this,
                     SbiIntentAppId.ResponseAuthority,
                     response.ContentPayload!);
-                result.PutExtra(SbiIntentProtocol.ResponseExtra, uri.ToString());
+                // CTK 插件用 Bundle.getParcelable 读取，必须是 Parcelable 的 Uri 而非字符串
+                var responseUri = global::Android.Net.Uri.Parse(uri.ToString());
+                result.PutExtra(SbiIntentProtocol.ResponseExtra, responseUri);
+                // 读授权只对 Intent 的 data/ClipData 生效，仅放 extra 不会记录授权
+                result.SetData(responseUri);
+                result.ClipData = global::Android.Content.ClipData.NewRawUri((string?)null, responseUri);
                 result.AddFlags(ActivityFlags.GrantReadUriPermission);
             }
             else
