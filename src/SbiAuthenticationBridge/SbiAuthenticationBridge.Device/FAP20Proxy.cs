@@ -455,6 +455,9 @@ public class FAP20Proxy : ISbiAuthenticationDevice, IDeviceProxy, IFtmSecureDevi
             }
 
             var qualityScore = ExtractQualityScore(biometric.Data);
+            _logger?.LogInformation(
+                "采集结果：transactionId={TransactionId}，轮询 {Polls} 次，质量分 {QualityScore}",
+                transactionId, polls, qualityScore);
             if ((int)qualityScore >= requestedScore)
             {
                 var elapsedMs = Environment.TickCount64 - startedAt;
