@@ -6,10 +6,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.And
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Desktop", "SbiAuthenticationBridge.Desktop\SbiAuthenticationBridge.Desktop.csproj", "{D5A66D41-32E0-4E49-8D34-0EACAA439DCD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.iOS", "SbiAuthenticationBridge.iOS\SbiAuthenticationBridge.iOS.csproj", "{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Browser", "SbiAuthenticationBridge.Browser\SbiAuthenticationBridge.Browser.csproj", "{09A1775C-B137-4FE9-BE9F-09E177D17748}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Core", "SbiAuthenticationBridge.Core\SbiAuthenticationBridge.Core.csproj", "{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SbiAuthenticationBridge.Host", "SbiAuthenticationBridge.Host\SbiAuthenticationBridge.Host.csproj", "{F742F380-E453-4F25-8B02-030F8E538DB2}"
@@ -42,16 +38,6 @@ Global
 		{D5A66D41-32E0-4E49-8D34-0EACAA439DCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D5A66D41-32E0-4E49-8D34-0EACAA439DCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D5A66D41-32E0-4E49-8D34-0EACAA439DCD}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EBAECBE9-3F4A-4A0F-9292-05D85EAD7FE9}.Release|Any CPU.Deploy.0 = Release|Any CPU
-		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{09A1775C-B137-4FE9-BE9F-09E177D17748}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6A3C6128-30CC-4EC5-9BCD-9AEE6CD49D1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
